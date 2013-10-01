@@ -26354,6 +26354,46 @@ var PacketStructureDefinition = {
 		defaultId: 862,
 		variableLength: false
 	},
+	PACKET_CZ_REQUEST_MOVE2: {
+		properties: [
+			{
+				name: "PacketType",
+				dataType: "Int16",
+				typeLength: 2,
+				arrayLength: 1,
+				offset: 0
+			},
+			{
+				name: "dest",
+				dataType: "Uint8",
+				typeLength: 1,
+				arrayLength: 3,
+				offset: 2
+			}
+		],
+		defaultId: 863,
+		variableLength: false
+	},
+	PACKET_CZ_REQUEST_TIME2: {
+		properties: [
+			{
+				name: "PacketType",
+				dataType: "Int16",
+				typeLength: 2,
+				arrayLength: 1,
+				offset: 0
+			},
+			{
+				name: "clientTime",
+				dataType: "Uint32",
+				typeLength: 4,
+				arrayLength: 1,
+				offset: 2
+			}
+		],
+		defaultId: 864,
+		variableLength: false
+	},
 	PACKET_AHC_GAME_GUARD: {
 		properties: [
 			{

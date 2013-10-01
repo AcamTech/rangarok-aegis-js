@@ -7,7 +7,7 @@ function SelectionList( width, height ) {
 	this.__itemBaseHeight = 15;
 	this.__listPadding = [ 1, 0, 1, 5 ];
 	this.__items = [];
-	this.__selected = -1;
+	this.__selected = 0;
 	
 	this.__backgroundColor = "#f7f7f7";
 	this.__selectionColor = "#cedeff";

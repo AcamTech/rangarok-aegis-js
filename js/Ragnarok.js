@@ -99,8 +99,8 @@ Ragnarok.prototype.displayLogin = function() {
 		
 	}).bind(this);
 	
-	window.userTextField.data = 'gamemaster';
-	window.passwordTextField.data = 'poring';
+	window.userTextField.data = 'dev001';
+	window.passwordTextField.data = 'development';
 	
 	this.graphics.gui.add(window, InterfaceAlignment.Center, InterfaceAlignment.Center);
 	

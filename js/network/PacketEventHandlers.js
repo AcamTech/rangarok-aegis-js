@@ -31,6 +31,11 @@ var PacketEventHandlers = [
 			this.lastLoginIP = struct.lastLoginIP;
 			this.lastLoginTime = struct.lastLoginTime;
 			this.Sex = struct.Sex;
+			if (this.Sex > 1)
+			{
+				this.Sex = 1;
+			}
+			
 			this.serviceList = struct.ServerList;
 			
 			this.network._fireEvent("OnLogin", { code: NetworkManager.ServiceList });

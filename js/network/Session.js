@@ -274,12 +274,11 @@ RONetworkSession.prototype.Init = function() {
 	
 	this.network.attachEventListener("OnAccountConnection", (function() {
 		
-		this.network.Request("connectreq", { // PACKET_CH_ENTER
+		this.network.Request("PACKET_CH_ENTER", {
 			AID: this.AID,
 			AuthCode: this.AuthCode,
 			userLevel: this.userLevel,
 			clientType: NetworkManager.ClientType,
-			//clienttype: NetworkManager.ClientType,
 			Sex: this.Sex
 		});
 		
@@ -305,7 +304,7 @@ RONetworkSession.prototype.Init = function() {
 		
 		var success = response.code == NetworkManager.MapLoadWait;
 				
-		this.network.Request("wanttoconnection", {
+		this.network.Request("PACKET_CZ_ENTER2", {
 			AID: this.AID,
 			GID: this.pc.GID,
 			AuthCode: this.AuthCode,
@@ -339,22 +338,30 @@ RONetworkSession.prototype.ReportSceneReady = function() {
 	
 	this.network.adviceLoadMapComplete();
 	
-	this.network.Request("loadendack", {
-		// PACKET_CZ_NOTIFY_ACTORINIT
+	this.network.Request("PACKET_CZ_NOTIFY_ACTORINIT", {
 	});
 	
 }
 
 RONetworkSession.prototype.Authenticate = function(username, password) {
 	
-	this.network.Request("loginreq", {
-		Version: this.network.packetVersion.version,
-		ID: username.toUint8Array(24),
-		Passwd: password.toUint8Array(24),
-		PasswdMD5: new Uint8Array( md5(password).match(/.{2}/g).map(function(a) { return parseInt(a, 16); }) ),
-		macData: new Uint8Array(13),
-		clienttype: NetworkManager.ClientType,
-	});
+	if(Settings.encryptLogin) {
+		this.network.Request("PACKET_CA_LOGIN4", {
+			Version: this.network.packetVersion.version,
+			ID: username.toUint8Array(24),
+			Passwd: password.toUint8Array(24),
+			PasswdMD5: new Uint8Array( md5(password).match(/.{2}/g).map(function(a) { return parseInt(a, 16); }) ),
+			macData: new Uint8Array(13),
+			clienttype: NetworkManager.ClientType,
+		});
+	} else {
+		this.network.Request("PACKET_CA_LOGIN", {
+			Version: this.network.packetVersion.version,
+			ID: username.toUint8Array(24),
+			Passwd: password.toUint8Array(24),
+			clienttype: NetworkManager.ClientType,
+		});
+	}
 	
 };
 
@@ -382,7 +389,7 @@ RONetworkSession.prototype.SelectCharacter = function(charID) {
 	
 	this.selectedChar = charID;
 	
-	this.network.Request("selectchar", {
+	this.network.Request("PACKET_CH_SELECT_CHAR", {
 		CharNum: charID
 	});
 	
@@ -394,9 +401,7 @@ RONetworkSession.prototype.MovePlayer = function(gatX, gatY) {
 	
 	// TODO: Direction
 	
-	this.network.Request("walktoxy", {
-		// PACKET_CZ_REQUEST_MOVE
-		// x, y, direction
+	this.network.Request("PACKET_CZ_REQUEST_MOVE2", {
 		dest: NetworkManager.Util.setZoneCoord(gatX, gatY, 0)
 	});
 	
@@ -414,7 +419,7 @@ RONetworkSession.prototype.PlayerChat = function( message ) {
 	var s_msg = this.pc.actor.name + " : " + message;
 	var len = s_msg.length + 1;
 	
-	this.network.Request("globalmessage", {
+	this.network.Request("PACKET_CZ_REQUEST_CHAT", {
 		msg: s_msg.toUint8Array( len )
 	});
 	

@@ -671,5 +671,8 @@ var PacketStructureIndexedFields = {
 		"AID",
 		"SSI_ID",
 		"ITID"
-	]
+	],
+	"PACKET_CZ_REQUEST_TIME2": [
+		"clientTime"
+	],
 };

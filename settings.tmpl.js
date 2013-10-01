@@ -4,8 +4,10 @@ var Settings = {
 	loginHost: "127.0.0.1",
 	loginPort: 6900,
 	
-	packetVersion: 30,
+	packetVersion: 99,
 	
+	useFixedPacketVersion: true,
+	encryptLogin: false,
 	music: true,
 	
 	fontSize: 12,

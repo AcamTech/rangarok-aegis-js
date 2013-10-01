@@ -46,7 +46,7 @@ NetworkManager.MapEnterRefused = 8;
 NetworkManager.MapEnter = 9;
 
 NetworkManager.PacketVersionDefault = 30;
-NetworkManager.ClientType = 77; // CLIENTTYPE_CURIOSITY :)
+NetworkManager.ClientType = 1;
 
 // Max time before auto disconnect
 NetworkManager.KeepAliveTime = 12000;
@@ -162,8 +162,7 @@ NetworkManager.prototype.update = function() {
 			
 			// Keep-alive for zone server
 			
-			this.Request("ticksend", {
-				// PACKET_CZ_REQUEST_TIME
+			this.Request("PACKET_CZ_REQUEST_TIME2", {
 				clientTime: now
 			});
 		}

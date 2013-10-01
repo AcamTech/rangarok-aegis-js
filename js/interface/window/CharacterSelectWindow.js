@@ -1,8 +1,8 @@
 var CharacterSelectWindow = function() {
 	
-	BaseWindow.call( this, 576, 342 );
+	BaseWindow.call( this, 576, 358 );
 	
-	this.addBitmap( PathHelper.getResPathLoginInterface("win_select"), 0 );
+	this.addBitmap( PathHelper.getResPathLoginInterface("win_select2"), 0 );
 	this.addBitmap( PathHelper.getResPathLoginInterface("box_select"), 1 );
 	
 	this.draggable = true;
@@ -45,6 +45,11 @@ var CharacterSelectWindow = function() {
 		
 	};
 	
+	// mapname
+	label = new CanvasTextfield( 180, 16 );
+	this.__attrLabels.push( label );	
+	this.addComponent( label, '0px', '0px', 68, 300 );
+	
 	// Buttons
 	
 	var buttonSelect = new InputButton( Interface.Button.Select, 42, 20 );
@@ -84,6 +89,9 @@ CharacterSelectWindow.prototype.__onEvent = function( obj ) {
 				this.__attrLabels[i].__data 
 					= obj.__charInfo[ this.__dispAttrs[i] ];
 			}
+			
+			// mapname
+			this.__attrLabels[12].__data = obj.__charInfo[ 'lastMap' ];
 		}
 		
 		

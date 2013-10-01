@@ -463,20 +463,20 @@ PacketVersion.prototype.checkConflicts = function( version ) {
 		"Sex": 1
 	}) );
 
-	console.log( this.getPacketBufferByNamedEntry("globalmessage", {
+	console.log( this.getPacketBufferByNamedEntry("PACKET_CZ_REQUEST_CHAT", {
 		"msg": "sliceo f lief".toUint8Array()
 	}) );
 
 	console.log( this.getPacketBufferByNamedEntry("loginreq", {
-		"Version": 30,
+		"Version": 20,
 		"ID": "password".toUint8Array(),
 		"Passwd": "password".toUint8Array(),
 		"PasswdMD5": "password".toUint8Array(),
 		"macData": "none".toUint8Array(),
-		"clienttype": 3
+		"clienttype": 1
 	}) );
 
-	console.log( this.getPacketBufferByNamedEntry("walktoxy", {
+	console.log( this.getPacketBufferByNamedEntry("CZ_REQUEST_MOVE2", {
 		"dest": "abc".toUint8Array()
 	}) );
 
@@ -528,6 +528,14 @@ PacketVersion.prototype.buildVersion = function( version ) {
 		this.packetLengthTable[i] = PacketStructureLengthTable[ this.packetIdToStruct[i] ];
 	}
 	
+	if (Settings.useFixedPacketVersion)
+	{
+		var rules = PacketDb[Settings.packetVersion];
+		
+		for(var j = 0; j < rules.length; j++) {
+			this.addRule( rules[j] );
+		}
+	} else {
 	for(var i = 0; i <= version; i++) {
 	
 		if(!(i in PacketDb)) continue;
@@ -537,6 +545,7 @@ PacketVersion.prototype.buildVersion = function( version ) {
 		for(var j = 0; j < rules.length; j++) {
 			this.addRule( rules[j] );
 		}
+	}
 		
 	
 	}
