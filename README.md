@@ -1,5 +1,5 @@
-rangarok-js
-===========
+rangarok-aegis-js forked from ragnarok-js
+=========================================
 
 Setup
 -------------------------
