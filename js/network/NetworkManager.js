@@ -101,8 +101,8 @@ NetworkManager.Util = {
 		var sy0 = p[5] & 0x0f;
 		
 		return {
-			x0: x0 + sx0 * 0.0625 - 0.5, 
-			y0: y0 + sy0 * 0.0625 - 0.5, 
+			x0: x0 /*+ sx0 * 0.0625 - 0.5*/, // 
+			y0: y0 /*+ sy0 * 0.0625 - 0.5*/,
 			x1: x1, 
 			y1: y1
 		};
@@ -284,16 +284,15 @@ NetworkManager.prototype.socketMessage = function( data ) {
 		var packetId = (new Uint16Array( packetBuffer, 0, 1 ))[0];
 		var struct;
 		
-		console.log('RECV 0x' + packetId.toString(16) );
-		
 		try {
 			struct = this.packetVersion.parsePacketBufferToStruct(packetBuffer);
 		} catch(e) {
-			console.error("NetworkManager: Received a packet which couldn't be parsed", new Uint8Array(packetBuffer));
+			console.error("NetworkManager: Received a packet (packetType=0x" + packetId.toString(16) + ") which couldn't be parsed", new Uint8Array(packetBuffer));
 			console.log('Object: ', struct );
 			continue;
 		}
 		
+		console.log("%cRECV 0x" + packetId.toString(16) + " " + struct.constructor, "color: #999999;");
 		
 		var bind = this.getPacketBind( struct.constructor );
 		
@@ -351,7 +350,7 @@ NetworkManager.prototype.Request = function( fn, struct ) {
 		
 	var buf = this.packetVersion.getPacketBufferByNamedEntry(fn, struct);
 	
-	console.log("SEND", fn);
+	console.log("%cSEND " + fn, "color: #999999;");
 			
 	this.connection.write( buf );
 	

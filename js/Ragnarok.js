@@ -45,7 +45,8 @@ Ragnarok.prototype.ready = function() {
 	
 	this.displayLogin();
 	
-	SoundPlayer.playBgm("01");
+	if(Settings.music)
+		SoundPlayer.playBgm("01");
 	
 };
 
@@ -182,8 +183,24 @@ Ragnarok.prototype.createMainInterface = function() {
 		}
 	}).bind(this);
 	
-	this.session.attachEventListener("OnPlayerChat", (function(msg) {
-		this.chatWindow.writeLine(msg);
+	this.session.attachEventListener("OnPlayerChat", (function(data) {
+		
+		this.chatWindow.writeLine(data.msg);
+		
+		// Note: will receive player's AID for system messages
+		// Probably better to not display messages by 
+		// PACKET_ZC_NOTIFY_PLAYERCHAT and instead display message before
+		// sending chat packet.
+		
+		// Try to map into (name) : (message)
+		var m = data.msg.match(/(.*) : (.*)/);
+		
+		if(m != null) {
+			var str = m[1] + ": " + m[2];
+			this.graphics.scene.SetActorChat(data.GID, str);		
+		}
+		
+		
 	}).bind(this));
 	
 	this.minimap = new Minimap(128, 128);
@@ -216,7 +233,7 @@ Ragnarok.prototype.displayMainInterface = function() {
 	
 	// TODO (can't keep reference to actor entity)
 	
-	//var actor = this.graphics.scene.entityMap.get(this.session.pc.GID);
+	//var actor = this.graphics.scene.entityMap.get(this.session.AID);
 	
 	//actor.attachEventListener("OnGatPositionChange", (function( position ) {
 		
@@ -237,7 +254,7 @@ Ragnarok.prototype.setupSessionHandlers = function() {
 
 	this.session.attachEventListener("OnActorAppear", (function(session_actor) {
 		
-		console.warn("Actor appeared");
+		//console.warn("Actor appeared");
 		
 		this.graphics.scene.AddEntity(
 			session_actor.GID,
@@ -246,9 +263,19 @@ Ragnarok.prototype.setupSessionHandlers = function() {
 		
 	}).bind(this));
 	
+	this.session.attachEventListener("OnActorDie", (function(session_actor) {
+		
+		//console.warn("Actor died");
+		
+		this.graphics.scene.KillEntity(
+			session_actor.GID
+		);
+		
+	}).bind(this));
+	
 	this.session.attachEventListener("OnActorVanish", (function(session_actor) {
 		
-		console.warn("Actor vanished");
+		//console.warn("Actor vanished");
 		
 		this.graphics.scene.RemoveEntity(
 			session_actor.GID
@@ -258,7 +285,7 @@ Ragnarok.prototype.setupSessionHandlers = function() {
 	
 	this.session.attachEventListener("OnActorPositionChange", (function(session_actor) {
 		
-		console.warn("Actor changed position");
+		//console.warn("Actor changed position");
 		
 		this.graphics.scene.SetEntityPosition(
 			session_actor.GID,
@@ -270,7 +297,7 @@ Ragnarok.prototype.setupSessionHandlers = function() {
 	
 	this.session.attachEventListener("OnActorMovement", (function(session_actor) {
 		
-		console.warn("Actor moved");
+		//console.warn("Actor moved");
 		
 		this.graphics.scene.MoveEntityPosition(
 			session_actor.GID,
@@ -316,7 +343,7 @@ Ragnarok.prototype.removeSessionHandlers = function() {
 Ragnarok.prototype.addPlayerCharacterToScene = function() {
 	
 	this.graphics.scene.AddEntity(
-		this.session.pc.GID,
+		this.session.AID,
 		this.session.pc.actor
 	);
 	
@@ -324,7 +351,7 @@ Ragnarok.prototype.addPlayerCharacterToScene = function() {
 
 Ragnarok.prototype.loadSceneAfter = function() {
 	
-	this.graphics.scene.bindActorToCamera(this.session.pc.GID);
+	this.graphics.scene.bindActorToCamera(this.session.AID);
 	
 	// Update entity positions 
 	// Needs to be done as entities can't currently be positioned while 
@@ -366,7 +393,7 @@ Ragnarok.prototype.loadSceneAfter = function() {
 	
 	this.attachSceneInput();
 	
-	// Report to session that we're ready to continue
+	// Report to session that we're ready to start playing
 	this.session.ReportSceneReady();
 
 };
@@ -391,8 +418,6 @@ Ragnarok.prototype.onLeaveMap = function() {
 
 Ragnarok.prototype.onStateChangeMap = function() {
 	
-	this.session.ReportSceneReady(); 
-	
 	var sceneMap = this.graphics.scene.getCurrentMapName().split(".")[0];
 	var sessionMap = this.session.GetMapName().split(".")[0];
 	
@@ -402,8 +427,11 @@ Ragnarok.prototype.onStateChangeMap = function() {
 		
 		this.graphics.scene.UnloadAllEntities();
 		this.addPlayerCharacterToScene();
-		this.graphics.scene.bindActorToCamera(this.session.pc.GID);
-		this.session.ReportSceneReady();
+		this.graphics.scene.bindActorToCamera(this.session.AID);
+		
+		if(this.graphics.scene.Ready()) {
+			this.session.ReportSceneReady();
+		}
 		
 	} else {
 		
@@ -472,6 +500,7 @@ Ragnarok.prototype.onStateCharSelect = function() {
 		var data = Object.create(accountData[i]);
 		
 		data.name = charCodeArrayToString(data.name);
+		data.lastMap = charCodeArrayToString(data.lastMap);
 		
 		charSelectWindow.addCharacter( data );
 		
@@ -484,7 +513,7 @@ Ragnarok.prototype.onStateCharSelect = function() {
 			
 			// validation should be done first
 			// simple for now...
-			if( event.charId === null ) {
+			if( event.charId === null || event.charId < 0 ) {
 				return;
 			}
 			

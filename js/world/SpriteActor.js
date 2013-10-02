@@ -23,7 +23,7 @@ var SpriteActor = function(mapInstance, name) {
 	
 	this._isMoving = false;
 	this._cancelMove = false;
-	
+		
 	this.movementSpeed = 150;
 	this.lastUpdate = -1;
 	this.movementTime = 0;
@@ -49,8 +49,10 @@ var SpriteActor = function(mapInstance, name) {
 	this._nameLabelGenerated = false;
 	
 	this.fadeAlpha = 1.0;
+	this.fadeSourceAlpha = 0.0;
 	this.fadeTargetAlpha = 1.0;
 	this.fadeTargetEndTime = 0;
+	this.fadeTargetStartTime = 0;
 	
 	this._active = true;
 	
@@ -58,9 +60,11 @@ var SpriteActor = function(mapInstance, name) {
 
 SpriteActor.prototype = Object.create(EventHandler.prototype);
 
-SpriteActor.prototype.fadeTarget = function(alpha, endTime) {
+SpriteActor.prototype.fadeTarget = function(targetAlpha, endTime) {
 	
-	this.fadeTargetAlpha = alpha;
+	this.fadeSourceAlpha = this.fadeTargetAlpha;
+	this.fadeTargetAlpha = targetAlpha;
+	this.fadeTargetStartTime = Date.now();
 	this.fadeTargetEndTime = endTime;
 	
 };
@@ -77,7 +81,7 @@ SpriteActor.Types = {
 };
 
 // Monster actions
-SpriteActor.Actions = {
+SpriteActor.BaseActionIndices = {
 	STAND: 0,
 	WALK: 1,
 	ATTACK: 2,
@@ -85,7 +89,7 @@ SpriteActor.Actions = {
 	DIE: 4
 };
 
-SpriteActor.PlayerActions = {
+SpriteActor.PlayerActionIndices = {
 	STAND: 0,
 	WALK: 1,
 	SIT: 2,
@@ -130,6 +134,26 @@ SpriteActor.AttachmentPriority = {
 	5: 200, // BOTTOM
 };
 
+SpriteActor.prototype.Die = function() {
+
+	this.AbruptStop();
+	
+	this.Action = this.ActionSet.DIE;
+
+};
+
+SpriteActor.prototype.__defineGetter__('ActionSet', function() {
+
+	if(this.type == SpriteActor.Types.PLAYER)
+		return SpriteActor.PlayerActionIndices;
+	
+	return SpriteActor.BaseActionIndices;
+});
+
+SpriteActor.prototype.__defineGetter__('AnimationRepeat', function() {
+	return this.Action != this.ActionSet.DIE;
+});
+
 SpriteActor.prototype.__defineGetter__('Action', function() {
 	return this.action;
 });
@@ -162,9 +186,9 @@ SpriteActor.prototype.__defineGetter__("isMoving", function() {
 
 SpriteActor.prototype.__defineSetter__("isMoving", function(value) {
 	if(value) {
-		this.Action = SpriteActor.Actions.WALK;
+		this.Action = this.ActionSet.WALK;
 	} else {
-		this.Action = SpriteActor.Actions.STAND;
+		this.Action = this.ActionSet.STAND;
 	}
 	this._isMoving = value;
 });
@@ -191,11 +215,24 @@ SpriteActor.prototype.SetGatPosition = function(x, y) {
 	
 	if(this.isMoving) {
 		// 
-		this.isMoving = false;	
+		this.isMoving = false;
 	}
 	
-	this.gatPosition = new THREE.Vector2(x, y);
+	var fx = Math.floor(x);
+	var fy = Math.floor(y);
+	
+	if(fx < x || fy < y)
+		console.warn("SpriteActor: Incorrect GAT tile position set");
+	
+	this.gatPosition = new THREE.Vector2(fx, fy);
 };
+
+SpriteActor.prototype.AbruptStop = function() {
+
+	this.CancelMove();
+	this.isMoving = false;
+
+}
 
 SpriteActor.prototype.CancelMove = function() {
 	if(this.isMoving) {
@@ -663,7 +700,12 @@ SpriteActor.prototype.SetAttachment = function(attachmentType, sprFileObject, ac
 		this.RemoveAttachment(attachmentType);
 	}
 	
-	var attachment = new SpriteActorAttachment(this.zGroup, sprFileObject, actFileObject);
+	var gID = this.zGroup;
+	
+	if(attachmentType == SpriteActor.Attachment.SHADOW)
+		gID = 0;
+	
+	var attachment = new SpriteActorAttachment(gID, sprFileObject, actFileObject);
 	
 	
 	this.attachments[attachmentType] = attachment;
@@ -832,7 +874,7 @@ SpriteActor.prototype.UpdateAttachment = function(deltaTime, attachmentType, mot
 	// if attacking, use aMotion
 	// if walking, use aMotion or speed?
 	
-	if(this.action == SpriteActor.Actions.WALK) {
+	if(this.action == this.ActionSet.WALK) {
 		//delay = 2 * this.movementSpeed / actFileObject.delays[motion];
 		delay = 2 * 10 * actFileObject.delays[motion] * (this.movementSpeed / 150);
 	} else {
@@ -843,7 +885,21 @@ SpriteActor.prototype.UpdateAttachment = function(deltaTime, attachmentType, mot
 	
 	if(attachment.timeElapsed >= delay) {
 		
-		attachment.frameId = (attachment.frameId + 1) % actFileObject.actions[motion].length;
+		var nextFrameId = attachment.frameId + 1;
+		var numFrames = actFileObject.actions[motion].length;
+		
+		if(nextFrameId >= numFrames) {
+			
+			if(this.AnimationRepeat) {
+				attachment.frameId = nextFrameId % numFrames;
+			}
+			
+		} else {
+		
+			attachment.frameId = nextFrameId;
+		
+		}
+		
 		attachment.timeElapsed = attachment.timeElapsed % delay;
 		
 	}
@@ -874,7 +930,10 @@ SpriteActor.prototype.Update = function(camera) {
 	
 	if( this.fadeTargetEndTime - Date.now() > 0 ) {
 		
-		this.fadeAlpha += (this.fadeTargetAlpha - this.fadeAlpha) * 0.05;
+		var d = this.fadeTargetEndTime - this.fadeTargetStartTime;
+		var t = ( this.fadeTargetEndTime - Date.now() ) / d;
+		
+		this.fadeAlpha = this.fadeTargetAlpha * (1 - t) + this.fadeSourceAlpha * t;
 		
 		
 	} else {
@@ -939,7 +998,7 @@ SpriteActor.prototype.Update = function(camera) {
 			SpriteActor.Attachment.SHADOW, 
 			0,
 			0.0, 
-			-1.0
+			0.0
 		);
 	}
 	
@@ -1031,7 +1090,7 @@ SpriteActor.CLabelOutlineColor = new THREE.Color(0x000000);
 SpriteActor.prototype.alignMessageSprite = function() {
 	
 	var a = this.displayMessageSprite.material.alignment;
-		
+	
 	a.y = SpriteActor.CMessageBoxAlignmentY / ( this.mapInstance.controls.zoom ); // ! todo: increase cohesion
 	a.y += 20 * a.y * (0.03 - this.displayMessageSprite.scale.y);
 };
@@ -1165,8 +1224,7 @@ SpriteActor.prototype.removeNameLabel = function() {
 		this.mapInstance.scene.remove(this.nameLabelSprite);
 	}
 	
-	this.displayMessageSprite = null;
-	this.displayMessageCreationTime = -1;
+	this.nameLabelSprite = null;
 
 };
 
@@ -1250,7 +1308,7 @@ SpriteActor.prototype.displayMessageLabel = function(message) {
 	sprite.material.alignment.y = 999.0;
 	sprite.material.depthTest = false;
 	
-	sprite.scale.y = 0.9 * 0.03 * ( textHeight / 14 ) * ( 1080 / mapLoader.screen.height );
+	sprite.scale.y = 0.9 * 0.03 * ( textHeight / 14 ) * ( 1080 / this.mapInstance.screen.height );
 	sprite.scale.x = sprite.scale.y * canvas.width / canvas.height;
 		
 	sprite.position = this.position;

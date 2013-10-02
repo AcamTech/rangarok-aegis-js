@@ -165,7 +165,14 @@ var PacketEventHandlers = [
 	
 	function( struct ) {
 		
-		this._fireEvent("OnPlayerChat", charCodeArrayToString(struct.msg) );
+		var GID = struct.constructor == "PACKET_ZC_NOTIFY_CHAT"
+			? struct.GID
+			: this.AID;
+		
+		this._fireEvent("OnPlayerChat", {
+			GID: GID,
+			msg: charCodeArrayToString(struct.msg)
+		});
 	}],
 	
 	// Movement
@@ -212,10 +219,6 @@ var PacketEventHandlers = [
 		
 		// Note standentry6 has the additional state variable (sitting?), newentry6 does not
 		
-		if(struct.constructor == "PACKET_ZC_NOTIFY_MOVEENTRY8") {
-			console.log("aaa");
-		}
-		
 		this.SpawnActor(struct.GID, struct);
 		
 		//PosDir
@@ -226,7 +229,12 @@ var PacketEventHandlers = [
 	
 	[["PACKET_ZC_NOTIFY_VANISH"], function( struct ) {
 	
-		this.VanishActor(struct.GID);
+		if(struct.type == 1) {
+			this.KillActor(struct.GID);
+		} else {
+			this.VanishActor(struct.GID);
+		}
+	
 	
 	}],
 	

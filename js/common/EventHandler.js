@@ -42,7 +42,6 @@ EventHandler.prototype.detachEventListener = function(event, fn) {
 	
 	if(idx > -1) {
 		listeners.splice(idx, 1);
-		console.log("EventHandler: Removed " + fn);
 	}
 	
 	this._eventListeners.set(event, listeners);
@@ -52,9 +51,7 @@ EventHandler.prototype.detachEventListener = function(event, fn) {
 EventHandler.prototype._fireEvent = function(event, value) {
 	
 	if(this._eventListeners.has(event)) {
-		
-		//console.log("Event fired: " + event);
-		
+				
 		var listeners = this._eventListeners.get(event);
 		
 		for(var i = 0; i < listeners.length; i++) {

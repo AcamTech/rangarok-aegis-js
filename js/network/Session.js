@@ -29,7 +29,7 @@ var ROSession = function() {
 		item: [],
 		actor: null,
 	};
-	
+		
 	this.font = null; // TODO: Use global font option
 	
 };
@@ -102,11 +102,11 @@ ROSession.prototype.SetPCStatus = function(varID, status) {
 	this.pc.status[varID] = status; 
 	
 	if(Settings.DEBUG) {
-		for(var i in GameVar) {
-			if(GameVar[i] == varID) {
-				console.log(i + " is now " + status);
-			}
-		}	
+		//for(var i in GameVar) {
+		//	if(GameVar[i] == varID) {
+		//		console.log(i + " is now " + status);
+		//	}
+		//}	
 	}
 	
 	if(varID == GameVar.SPEED) {
@@ -132,7 +132,7 @@ ROSession.prototype.GetPCStatus = function(varID) {
 ROSession.prototype.VanishActor = function(GID) {
 
 	if(!this.actors.has(GID)) {
-		console.warn("ROSession: Vanishing actor doesn't exist!");
+		console.warn("ROSession: Vanishing actor (GID: " + GID + ") doesn't exist!");
 		return;
 	}
 
@@ -145,6 +145,19 @@ ROSession.prototype.VanishActor = function(GID) {
 
 ROSession.prototype.GetActor = function(GID) {
 	return this.actors.get(GID);
+};
+
+ROSession.prototype.KillActor = function(GID) {
+
+	if(!this.actors.has(GID)) {
+		console.warn("ROSession: Dying actor (GID: " + GID + ") doesn't exist!");
+		return;
+	}
+
+	var actor = this.actors.get(GID);
+
+	this._fireEvent("OnActorDie", actor);
+
 };
 
 ROSession.prototype.SpawnActor = function(GID, charInfo) {
@@ -197,11 +210,13 @@ ROSession.prototype.CreatePcActor = function() {
 		
 	charInfo.objecttype = 0;
 	charInfo.sex = this.Sex;
-	charInfo.GID = this.pc.GID;
+	//charInfo.GID = this.pc.GID;
+	charInfo.GID = this.AID;
 	
-	this.SpawnActor(this.pc.GID, charInfo);
+	//this.SpawnActor(this.pc.GID, charInfo);
+	this.SpawnActor(this.AID, charInfo);
 	
-	this.pc.actor = this.GetActor(this.pc.GID);
+	this.pc.actor = this.GetActor(this.AID);
 		
 };
 

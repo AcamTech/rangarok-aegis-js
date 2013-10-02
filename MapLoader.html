@@ -406,7 +406,7 @@ var start = function() {
 			});
 			
 			// Remove background from GUI
-			gui.setBackground( null );
+			gui.clearBackground();
 			gui.add(chatWindow, InterfaceAlignment.Left, InterfaceAlignment.Bottom);
 			
 			chatWindow.writeLine( "Welcome to " + mapLoader.getMapName(), "#66ff66" );
@@ -430,7 +430,7 @@ var start = function() {
 			
 			// Set position
 			//obj.SetGatPosition(44, 136);
-			obj.SetGatPosition(262, 85);
+			obj.SetGatPosition(100, 50);
 			
 			window.s = obj;
 			

@@ -213,9 +213,22 @@ SprParser.prototype.getAtlasUvs = function( id, frame_is_rgba ) {
 // requires three.js
 SprParser.prototype.getAtlasTextureThreeJs = function() {
 	
+	// Caching disabled for now
+	
 	if(this._atlasProcessed) {
-		return this._atlasDataTexture;
+	
+		// Check if a new map session has been started
+		// Temporary hack so it doesn't return a texture object bound 
+		// to an earlier context
+		
+		if(this.MAP_SESSION_CONTEXT_ID === MapLoader.SESSION_CONTEXT_ID) {
+			return this._atlasDataTexture;
+		} else {
+			// Can't reuse object => return new texture
+		}
 	}
+	
+	this.MAP_SESSION_CONTEXT_ID = MapLoader.SESSION_CONTEXT_ID;
 	
 	var atlasDataObject = this.getAtlasTextureRgba();
 	
