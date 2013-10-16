@@ -1,4 +1,4 @@
-var ClassResNameTable = {
+﻿var ClassResNameTable = {
 	0:'ÃÊº¸ÀÚ', // JT_NOVICE
 	1:'°Ë»ç', // JT_SWORDMAN
 	2:'¸¶¹ý»ç', // JT_MAGICIAN
