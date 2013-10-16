@@ -38,17 +38,17 @@ GND.prototype.getTileLightLevel = function(x, y) {
 	var tile = this.getTile(x, y);
 	
 	if(!tile)
-		return 0;
+		return 1.0;
 	
-	var topSurfaceId = tile.topSurfaceId;
+	var topSurfaceId = tile[4];
 	
 	if(!topSurfaceId)
-		return 0;
+		return 1.0;
 	
 	var surface = this.surfaces[topSurfaceId];
 	
 	if(!surface)
-		return 0;
+		return 1.0;
 	
 	return this.lightMapSaturationLevels[surface.lightMapId || 0] / 12495;
 };
@@ -78,9 +78,6 @@ GND.prototype.generateLightMaps = function() {
 			//brightness		1*lmapWidth*lmapHeight		unsigned brightness values of the grid (must be 8x8) (uchar[8][8])
 			//color			3*lmapWidth*lmapHeight		RGB/BGR(?) colors of the grid (must be 8x8) (uchar[3][8][8])
 			
-			//brightness: new Uint8Array( buffer.slice( p, p + dim ) ),
-			//color: new Uint8Array( buffer.slice( p + dim, p + 4*dim ) ),
-			
 			for( var k = 0; k < tsize; k++ ) {
 				
 				var pk = p + k;
@@ -91,38 +88,17 @@ GND.prototype.generateLightMaps = function() {
 				
 				this.lightMapSaturationLevels[i] += lmap.brightness[ps];
 				
-				//lightMapColor[ 4*pk + 0 ] = lmap.brightness[ ps ];
-				//lightMapColor[ 4*pk + 1 ] = lmap.brightness[ ps ];
-				//lightMapColor[ 4*pk + 2 ] = lmap.brightness[ ps ];
-				//lightMapColor[ 4*pk + 3 ] = 255;
-				
-				
-				//if( lmap.color[ pc + 0 ] != 0 
-				//|| lmap.color[ pc + 1 ] != 0 
-				//|| lmap.color[ pc + 2 ] != 0 
-				//) {
-				//	console.log('not zero');
-				//}
-				
 				// Posterization
 				
 				var r = (~~( lmap.color[ pc + 0 ] / this.posterizationLevel )) * this.posterizationLevel;
 				var g = (~~( lmap.color[ pc + 1 ] / this.posterizationLevel )) * this.posterizationLevel;
 				var b = (~~( lmap.color[ pc + 2 ] / this.posterizationLevel )) * this.posterizationLevel;
 				
-				//lightMapShadow[ pk ] = lmap.brightness[ ps ];
-				//lightMapColor[ 4*pk + 0 ] = 255;
-				//lightMapColor[ 4*pk + 1 ] = 255;
-				//lightMapColor[ 4*pk + 2 ] = 255;
-				
 				lightMapColor[ 4*pk + 0 ] = r;
 				lightMapColor[ 4*pk + 1 ] = g;
 				lightMapColor[ 4*pk + 2 ] = b;
 				lightMapColor[ 4*pk + 3 ] = lmap.brightness[ ps ];
-				//lightMapColor[ 4*pk + 3 ] = 255;
 				
-				
-				//lightMapColor[ 4*pk + 3 ] = lmap.brightness[ ps ];
 			}
 			
 		}
@@ -149,10 +125,6 @@ GND.prototype.__defineGetter__('width', function() {
 GND.prototype.__defineGetter__('height', function() {
 	return this.header.height;
 });
-
-GND.prototype.getTile = function( x, y ) {
-	return this.grid[ x + y * this.width ];
-}
 
 GND.prototype.parse = function( buffer ) {
 	
@@ -191,8 +163,8 @@ GND.prototype.parse = function( buffer ) {
 	
 	p += 2;
 	
-	//if( this.header.version.compareTo(1, 6) < 0 )
-		//throw 'GND :: Unable to read file version ' + this.header.version.toString;
+	if( this.header.version.compareTo(1, 7) < 0 )
+		throw 'GND :: Unable to read file version ' + this.header.version.toString;
 	
 	this.header.width = data.getInt32( p, true );
 	this.header.height = data.getInt32( p + 4, true );
@@ -286,30 +258,31 @@ GND.prototype.parse = function( buffer ) {
 		p += 40;
 	}
 	
-	var block;
+	var blockDat = buffer.slice(p);
 	
-	for( var i = 0; i < this.header.width * this.header.height; i++ ) {
-		
-		block = {
-			upperLeftHeight: data.getFloat32( p, true ),
-			upperRightHeight: data.getFloat32( p + 4, true ),
-			lowerLeftHeight: data.getFloat32( p + 8, true ),
-			lowerRightHeight: data.getFloat32( p + 12, true )
-		};
-		
-		if( this.header.version.compareTo( 1, 7 ) >= 0 ) {
-			block.topSurfaceId = data.getInt32( p + 16, true );
-			block.frontSurfaceId = data.getInt32( p + 20, true );
-			block.rightSurfaceId = data.getInt32( p + 24, true );
-			p += 28;
-		} else {
-			block.topSurfaceId = data.getInt16( p + 16, true );
-			block.frontSurfaceId = data.getInt16( p + 18, true );
-			block.rightSurfaceId = data.getInt16( p + 20, true );
-			p += 22;
-		}
-		
-		this.grid.push( block );
-	}
+	this.blockFloat32Data = new Float32Array(blockDat);
+	this.blockInt32Data = new Int32Array(blockDat);
 	
-}
+};
+
+GND.SIZEOF_STRUCT_BLOCK = 28;
+
+GND.prototype.offsetToBlock = function(x, y) {
+	return (this.header.width * y + x) * GND.SIZEOF_STRUCT_BLOCK;
+};
+
+GND.prototype.getTile = function( x, y ) {
+	
+	var p = this.offsetToBlock(x, y) / 4;
+
+	return [
+		this.blockFloat32Data[p+0], // upperLeft
+		this.blockFloat32Data[p+1], // upperRight
+		this.blockFloat32Data[p+2], // lowerLeft
+		this.blockFloat32Data[p+3], // lowerRight
+		this.blockInt32Data[p+4], // topSurfaceId
+		this.blockInt32Data[p+5], // frontSurfaceId
+		this.blockInt32Data[p+6] // rightSurfaceId
+	];
+	
+};

@@ -201,6 +201,30 @@ ROSession.prototype.SpawnActor = function(GID, charInfo) {
 	
 };
 
+var ROSessionAttackDataObject = function(sourceGID, targetGID, attackMT, attackedMT, count, damage, damage2, startTime) {
+	this.GID = sourceGID;
+	this.targetGID = targetGID;
+	this.attackMT = attackMT;
+	this.attackedMT = attackedMT;
+	this.count = count;
+	this.damage = damage;
+	this.damage2 = damage2;
+	this.startTime = startTime;
+};
+
+ROSession.prototype.AttackActor = function(sourceGID, targetGID, attackMT, attackedMT, count, damage, damage2, startTime) {
+	
+	var attackData = new ROSessionAttackDataObject(
+		sourceGID, targetGID, 
+		attackMT, attackedMT,
+		count, damage, damage2, 
+		this.toLocalTime(startTime)
+	);
+
+	this._fireEvent("OnActorAttacked", attackData);
+
+};
+
 ROSession.prototype.CreatePcActor = function() {
 	
 	
@@ -411,6 +435,10 @@ RONetworkSession.prototype.SelectCharacter = function(charID) {
 	return true;
 	
 };
+
+//RONetworkSession.prototype.PlayerAttackTarget = function(targetGID) {
+
+//};
 
 RONetworkSession.prototype.MovePlayer = function(gatX, gatY) {
 	

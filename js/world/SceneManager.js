@@ -88,6 +88,33 @@ SceneManager.prototype.SetEntityPosition = function(GID, x, y) {
 
 };
 
+SceneManager.prototype.ActorAttack = function(GID, targetGID, attackMT, attackedMT) {
+
+	if(!this.entityMap.has(GID)) {
+		console.warn("SceneManager: Attacker doesn't exist");
+		return;
+	}
+	
+	if(!this.entityMap.has(targetGID)) {
+		console.warn("SceneManager: Attacked doesn't exist");
+		return;
+	}
+	
+	var attacker = this.entityMap.get(GID);
+	var attacked = this.entityMap.get(targetGID);
+	
+	attacker.AttackMotionSpeed = attackMT;
+	attacker.Action = attacker.ActionSet.ATTACK;
+	attacker.SetDirectionTargetActor(attacked);
+	
+	if(attackedMT > 0) {
+		attacked.DamageMotionSpeed = attackedMT;
+		attacked.Action = attacked.ActionSet.HURT1;	
+		//attacked.SetDirectionTargetActor(attacker);
+	}
+
+};
+
 SceneManager.prototype.MoveEntityPosition = function(GID, x, y, x1, y1, moveStartTime) {
 
 	if(!this._sceneReady)
@@ -98,31 +125,9 @@ SceneManager.prototype.MoveEntityPosition = function(GID, x, y, x1, y1, moveStar
 		return;
 	}
 	
-	// TODO: Check x, y vs. entity's gat position
-	//entity.SetGatPosition(x, y);
-	
 	var entity = this.entityMap.get(GID);
 	
-	if(entity.gatPosition.x != x || entity.gatPosition.y != y) {
-		//console.log("Incorrect gat position, setting to ", x, y);
-		
-		var dx = Math.abs(entity.gatPosition.x - x);
-		var dy = Math.abs(entity.gatPosition.y - y);
-		
-		// Tolerate tile displacement of 1 to avoid sprites "jumping"
-		if(dx > 1 || dy > 1) {
-			entity.SetGatPosition(x, y);
-		}
-		
-		// TODO
-		// check "star" area (dx*dx + dy*dy <= 25)
-		// 	if true:	fake display of walking from current position
-		//				to (x1,y1). use path cost/movement time of (x,y)->(x1,y1)
-		//  else:		set gat position directly
-		
-	}
-	
-	entity.MoveToGatPosition(x1, y1, moveStartTime);
+	entity.MoveToGatPosition(x, y, x1, y1, moveStartTime);
 
 };
 
@@ -282,6 +287,9 @@ SceneManager.prototype.updateActorDisplay = function(actor, charInfo) {
 		if(charInfo.accessory3 > 0) // mid
 			this.changePcActorDisplay(actor, charInfo, GameVar.ACCESSORY3, charInfo.accessory3);
 	
+		if(charInfo.weapon > 0) // mid
+			this.changePcActorDisplay(actor, charInfo, GameVar.WEAPON, charInfo.accessory3);
+	
 	} else if(type == SpriteActor.Types.MONSTER) {
 	
 		this.changeMonsterDisplay(actor, charInfo);
@@ -372,7 +380,18 @@ SceneManager.prototype.changePcActorDisplay = function(actor, charInfo, varID, v
 				SpriteActor.Attachment.MID
 			);
 			break;
-		
+		case GameVar.WEAPON:
+			this.createActorAttachment(
+				actor,
+				PathHelper.getWeaponResPath(charInfo.weapon, charInfo.job, charInfo.sex),
+				SpriteActor.Attachment.WEAPON
+			);
+			this.createActorAttachment(
+				actor,
+				PathHelper.getWeaponEffectResPath(charInfo.weapon, charInfo.job, charInfo.sex),
+				SpriteActor.Attachment.WEAPON_EFFECT
+			);
+			break;
 		default:
 			console.warn("SceneManager: a spoaijda oijeqoj");
 			break;
@@ -414,8 +433,15 @@ SceneManager.prototype.createActorAttachment = function(actor, resName, attachme
 	// Return task
 	
 	return task.finally((function() {
+		
+		if(actFileObject == null || sprFileObject == null) {
+			console.warn("SceneManager: Error loading attachment " + resName);
+			return;
+		}
+	
 		actor.SetAttachment(attachmentType, sprFileObject, actFileObject);
 		actor.addAttachmentToScene(this.loader.scene, attachmentType);
+		
 	}).bind(this))
 	
 };

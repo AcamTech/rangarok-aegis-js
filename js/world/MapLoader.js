@@ -16,6 +16,9 @@ MapLoader.prototype = Object.create(EventHandler.prototype);
 
 MapLoader.prototype.derefTempObjects = function() {
 	this.rsmAtlasObject = null;
+	this.rsmFileObjects = null;
+	this.rswFileObject = null;
+	this.rswModelObjects = null;
 };
 
 MapLoader.prototype.reset = function() {
@@ -154,18 +157,30 @@ MapLoader.prototype.generateAtlasTexture = function(textureNameList) {
 	
 	var textures = new Map();
 	
+	var t0 = Date.now();
+	
 	/* Load all textures in name list */
-	for(var i = 0; i < textureNameList.length; i++)
+	for(var i = 0; i < textureNameList.length; i++) {
+	
+		var textureName = textureNameList[i];
+	
+		if(Settings.useAlphaTextures && Settings.alphaTextureFormat !== undefined) {
+			textureName = textureName.replace(/.(bmp|tga)/i, "." + Settings.alphaTextureFormat);
+		}
+		
 		batch
-			.then(ResourceLoader.getTextureImage.bind(this, textureNameList[i]))
+			.then(ResourceLoader.getTextureImage.bind(this, textureName))
 			.then((function(name) {
 				return function(image) {
 					textures.set(name, image);
 				};
 			})(textureNameList[i]));
+	}
 	
 	batch.finally((function() {
 		
+		console.warn("Downloaded textures in " + (Date.now() - t0) + "ms");
+		t0 = Date.now();
 		// Combine Image to DataTexture
 		
 		var atlasData = new MapLoader.AtlasDataObject(),
@@ -188,25 +203,30 @@ MapLoader.prototype.generateAtlasTexture = function(textureNameList) {
 		
 		var addTexture = function() {
 			
-			/* Clear magenta (255, 0, 255) */
-			var imgd = context.getImageData(0, 0, width, height);
+			if(Settings.useAlphaTextures !== true) {
+				
+				/* Clear magenta (255, 0, 255) */
 			
-			for(var i = 0; i < imgd.data.length; i += 4) {
-				if(imgd.data[i] > 0xf0
-					&& imgd.data[i+1] < 0x0a
-					&& imgd.data[i+2] > 0xf0
-				)
-					imgd.data[i+3] = 0;
+				var imgd = context.getImageData(0, 0, width, height);
+				
+				for(var i = 0; i < imgd.data.length; i += 4) {
+					if(imgd.data[i] > 0xf0
+						&& imgd.data[i+1] < 0x0a
+						&& imgd.data[i+2] > 0xf0
+					)
+						imgd.data[i+3] = 0;
+				}
+				
+				context.putImageData(imgd, 0, 0);
+
 			}
-			
-			context.putImageData(imgd, 0, 0);
 			
 			// Create texture
 			
 			var t = new THREE.Texture(canvas);
 			
 			t.minFilter = THREE.LinearFilter;
-			t.magFilter = THREE.NearestFilter;
+			t.magFilter = THREE.LinearFilter;
 			
 			t.needsUpdate = true;
 			t.flipY = false;
@@ -350,6 +370,8 @@ MapLoader.prototype.generateAtlasTexture = function(textureNameList) {
 		addTexture.call(this);
 		
 		console.log("Info: Created texture atlas in " + (aId+1) + " parts");
+		
+		console.warn("Merged textures in " + (Date.now() - t0) + "ms");
 		
 		pipe.success(atlasData);
 		
@@ -577,7 +599,13 @@ MapLoader.prototype.createGround = function() {
 	
 	for( var i = 0; i < this.gndFileObject.textures.length; i++ ) {
 		
-		var texture = ResourceLoader.getTexture(this.gndFileObject.textures[i]);
+		var textureName = this.gndFileObject.textures[i];
+		
+		if(Settings.useAlphaTextures && Settings.alphaTextureFormat !== undefined) {
+			textureName = textureName.replace(/.(bmp|tga)/i, "." + Settings.alphaTextureFormat);
+		}
+		
+		var texture = ResourceLoader.getTexture(textureName);
 		
 		texture.flipY = false;
 		//texture.minFilter = THREE.NearestFilter;
@@ -614,25 +642,26 @@ MapLoader.prototype.createGround = function() {
 	// Alternative UVs for lightmap
 	groundGeometry.faceVertexUvs[1] = [];
 	
-	var surfaces = ['frontSurfaceId', 'rightSurfaceId', 'topSurfaceId'];
-			
 	var surfaceVerticeAligments = [
-		[	[0, 1, 'lowerLeftHeight'],
-			[1, 1, 'lowerRightHeight'],
-			[1, 1, 'upperRightHeight'],
-			[0, 1, 'upperLeftHeight']
+		[	[0, 1, 2], // lowerLeftHeight
+			[1, 1, 3], // lowerRightHeight
+			[1, 1, 1], // upperRightHeight
+			[0, 1, 0] // upperLeftHeight
 		], [
-			[1, 1, 'lowerRightHeight'],
-			[1, 0, 'upperRightHeight'],
-			[1, 0, 'upperLeftHeight'],
-			[1, 1, 'lowerLeftHeight']
+			[1, 1, 3], // lowerRightHeight
+			[1, 0, 1], // upperRightHeight
+			[1, 0, 0], // upperLeftHeight
+			[1, 1, 2] // lowerLeftHeight
 		], [
-			[0, 0, 'upperLeftHeight'],
-			[1, 0, 'upperRightHeight'],
-			[1, 1, 'lowerRightHeight'],
-			[0, 1, 'lowerLeftHeight']
+			[0, 0, 0], // upperLeftHeight
+			[1, 0, 1], // upperRightHeight
+			[1, 1, 3], // lowerRightHeight
+			[0, 1, 2] // lowerLeftHeight
 		]
 	];
+	
+	// frontSurfaceId, rightSurfaceId, topSurfaceId
+	var surfaces = [5, 6, 4];
 	
 	var neighborTileId = [
 		[0, 1],
@@ -701,13 +730,11 @@ MapLoader.prototype.createGround = function() {
 					
 					// Add vertex colors for top surface
 					
-					if(surfaceIdx == 'topSurfaceId') {
+					if(surfaceIdx == 4) { // topSurfaceId
 						
 						var maxHeight = Math.max(
-							tile.lowerLeftHeight,
-							tile.upperLeftHeight,
-							tile.lowerRightHeight,
-							tile.lowerRightHeight
+							tile[0], tile[1],
+							tile[2], tile[3]
 						);
 						
 						if(this.rswFileObject.header.waterLevel < maxHeight) {
@@ -736,8 +763,8 @@ MapLoader.prototype.createGround = function() {
 							
 							var tile = this.gndFileObject.getTile(x + v[i][0], y + v[i][1]) || {};
 							
-							if(tile['topSurfaceId'] >= 0 && this.gndFileObject.surfaces[tile['topSurfaceId']]) {
-								var color32dpp = this.gndFileObject.surfaces[ tile['topSurfaceId'] ].color_bgra;
+							if(tile[4] >= 0 && this.gndFileObject.surfaces[tile[4]]) {
+								var color32dpp = this.gndFileObject.surfaces[ tile[4] ].color_bgra;
 								face.vertexColors[i] = (new THREE.Color).setRGB(
 									color32dpp[2] / 255,
 									color32dpp[1] / 255,
@@ -1462,18 +1489,12 @@ MapLoader.prototype.setupWorld = function() {
 	this.createGround();
 	console.log( "%cPerformance: Compiled ground in " + (Date.now()-time0) + "ms", "color: #ff6600" );
 	
-	//Tick("Creating ground");
-	
 	// Create the coordinate pointer
 	this.createCoordinatePointer();
-	
-	//Tick("Creating coordinate pointer");
 	
 	this.scene.add(this.coordinatePointer.mesh);
 	
 	this.setupWorldLighting();
-
-	//Tick("Creating world lighting");
 	
 };
 
@@ -1814,6 +1835,8 @@ MapLoader.prototype.OnMouseWheelDown = function(e) {
 
 MapLoader.prototype.start = function() {
 	
+	var t0 = Date.now();
+	
 	if(IndoorRswTable[ this.getMapName() ] === true) {
 	
 		var toRad = Math.PI / 180;
@@ -1906,7 +1929,6 @@ MapLoader.prototype.start = function() {
              
              if( tile ) {
 				
-				//var h = - this.gatFileObject.getBlockAvgDepth( cxd, czd );
 				var h = - this.subGatPositionToMapHeight( cxd, czd, cxm, czm );
 				
 				if( Math.abs(h - cpt.y) < 0.5 )
@@ -1940,7 +1962,7 @@ MapLoader.prototype.start = function() {
 		this.mouseGatPosition.y = z;
 		
 		// Set coordinate pointer		
-		if(this.gatFileObject.getBlock(this.mouseGatPosition.x, this.mouseGatPosition.y)) {
+		if(this.gatFileObject.isValidBlock(this.mouseGatPosition.x, this.mouseGatPosition.y)) {
 			
 			if(!this.gatFileObject.hasProperty(
 				this.mouseGatPosition.x, 
@@ -1972,22 +1994,10 @@ MapLoader.prototype.start = function() {
 	
 	var animate;
 	
-	//var composer = new THREE.EffectComposer( this.renderer );
-	//composer.addPass( new THREE.RenderPass( this.scene, this.camera ) );
-	// strength, kernelSize, sigma, resolution
-	//var effect = new THREE.BloomPass(1.15, 5, 0.2, 1024);
-	//effect.enabled = false;
-	//composer.addPass( effect );
-	//var copyPass = new THREE.ShaderPass( THREE.CopyShader );
-	//copyPass.renderToScreen = true;
-	//composer.addPass( copyPass );
-	//this.composer = composer;
-	
 	animate = (function() {
 		
 		var now = Date.now()
 		var dt = now - last;
-		//controls.update( dt*0.01 );
 		last = now;
 		
 		if(this.running) {
@@ -1995,18 +2005,19 @@ MapLoader.prototype.start = function() {
 			this.controls.Update( dt );
 			
 			this.renderer.render(this.scene, this.camera);
-			//this.composer.render( dt );
 			
 			if(colorPick && now - lastColorPick >= this.colorPickingInterval) {
-			
-				//console.log("color picking");
 			
 				this.setWorldDisplay(false); // hide all world objects
 				THREE.Sprite.PickingMode = 1; // uuugh -_-"
 				
 				var gl = this.renderer.getContext();
 				
+				var color = this.renderer.getClearColor().getHex();
+				
+				this.renderer.setClearColor(0x000000);
 				this.renderer.render(this.scene, this.camera, this.colorPickingRenderTarget);
+				this.renderer.setClearColor(color);
 				
 				var u32 = new Uint8Array(4);
 				
@@ -2065,7 +2076,8 @@ MapLoader.prototype.start = function() {
 	}).bind(this);
 
 	animate();
-
+	
+	console.warn("Starting up took " + (Date.now() - t0) + "ms");
 };
 
 MapLoader.prototype.stop = function() {
@@ -2084,33 +2096,73 @@ MapLoader.prototype.stop = function() {
 	
 	document.body.removeChild(this.renderer.domElement);
 	
-	// Maybe unload?
-	//ragnarok.graphics.scene.loader.scene.__objects
+	this.unload();
 	
 };
 
-MapLoader.prototype.switchMap = function(mapName) {
-	
-	var ref = this;
-	
-	ref.stop();
-	ref.loadMap(mapName).then(function() {
-		console.log("MAP LOADED; READY TO START");
-		ref.start();
-	});
-	
-};
+MapLoader.prototype.unloadObject = function(obj) {
 
-
-function Tick(msg, id) {
-	id = id || 0;
-	if(Tick.time[id]) {
-		console.warn("(Time) " + msg + ": " + (Date.now() - Tick.time[id]) + "ms");
+	if(obj.material instanceof THREE.Material) {
+		
+		if(obj.material instanceof THREE.MeshFaceMaterial) {
+			
+			for(var i = 0; i < obj.material.materials.length; i++) {
+			
+				obj.material.materials[i].dispose();
+			
+			}
+			
+		}
+		
+		obj.material.dispose();
 	}
-	Tick.time[id] = Date.now();
-}
+	
+	if(obj.geometry instanceof THREE.Geometry) {
+		
+		obj.geometry.dispose();
+		
+	}
+	
+	if(obj.dispose)
+		obj.dispose();
 
-Tick.time = [];
+};
+
+MapLoader.prototype.unload = function() {
+
+	// Remove all objects from scene
+		
+	while(this.scene.__objects.length > 0) {
+		
+		var o = this.scene.__objects[0];
+		
+		if(o.children.length > 0) {
+			
+			while(o.children.length > 0) {
+				this.unloadObject(o.children[0]);
+				o.remove(o.children[0]);
+			}
+			
+		}
+		
+		this.unloadObject(o);
+		
+		this.scene.remove(this.scene.__objects[0]);
+	}
+
+};
+
+//MapLoader.prototype.switchMap = function(mapName) {
+	
+//	var ref = this;
+	
+//	ref.stop();
+//	ref.loadMap(mapName).then(function() {
+//		console.log("MAP LOADED; READY TO START");
+//		ref.start();
+//	});
+	
+//};
 
 MapLoader.prototype._setFogFar = function(value) {
 	if(!this.scene || !this.scene.fog) {
@@ -2136,25 +2188,28 @@ MapLoader.prototype.__defineGetter__("screen", function() {
 });
 
 MapLoader.prototype.loadMap = function(worldResourceName) {
-		
+	
 	this.worldResourceName = worldResourceName;
 	
-	Tick();
+	if(worldResourceName.match("gonryun.rsw") !== null 
+		|| worldResourceName.match("yuno.rsw") !== null ) {
+		this.renderer.setClearColor(0x6699cc);
+	}
 	
 	// Guess file names and start loading instead of waiting for 
 	// header data from RSW ...
 	var gndName = this.worldResourceName.replace(/rsw$/, "gnd");
 	var gatName = this.worldResourceName.replace(/rsw$/, "gat"); 
 	
-	var loadPromise = new Deferred();
-	var loadFilePipe = Deferred();
-	var loadBranchMerge = Deferred();
+	var onDone = new Deferred();
+	var onBegin = Deferred();
+	var onSetup = Deferred();
 	
 	var LOAD_RSM = true;
 	
 	// Start loading RSW
 	
-	var rswContentPipe = loadFilePipe.then(ResourceLoader.getRsw(worldResourceName).then(
+	var onRswLoad = onBegin.then(ResourceLoader.getRsw(worldResourceName).then(
 		(function(data) {
 			console.log("Loaded RSW");
 			this.rswFileObject = new RSW(data);
@@ -2162,7 +2217,8 @@ MapLoader.prototype.loadMap = function(worldResourceName) {
 	));
 	
 	// Start loading GND
-	loadFilePipe.then(ResourceLoader.getGnd(gndName).then(
+	
+	var onGndLoad = onBegin.then(ResourceLoader.getGnd(gndName).then(
 		(function(data) {
 			console.log('Loaded GND');
 			this.gndFileObject = new GND(data);
@@ -2170,18 +2226,17 @@ MapLoader.prototype.loadMap = function(worldResourceName) {
 	));
 	
 	// Start loading GAT
-	var gatLoader = loadFilePipe.then(ResourceLoader.getGat(gatName).then(
+
+	var onGatLoad = onBegin.then(ResourceLoader.getGat(gatName).then(
 		(function(data) {
 			console.log('Loaded GAT');
 			this.gatFileObject = new GAT(data);
 		}).bind(this)
 	));
 	
-	// On RSW loaded
+	// On RSW loaded => load RSM
 	
-	if(LOAD_RSM) {
-	
-	var rsmContentPipe = rswContentPipe
+	var onRsmLoad = onRswLoad
 		.then((function() {
 	
 			var rsmLoader = Deferred();
@@ -2229,35 +2284,58 @@ MapLoader.prototype.loadMap = function(worldResourceName) {
 			
 			return pipe;
 			
-		}).bind(this))
-		
-	}
+		}).bind(this));
 	
-	// On RSW, GND and GAT loaded, branch in
-	loadBranchMerge.then(
-		loadFilePipe.finally(this.setupWorld.bind(this))
-		.then((function() {
-			if(LOAD_RSM) {
-				return Deferred()
-					.then(rsmContentPipe)
-					.then(this.setupModelTextures.bind(this))
-					.then(this.setupModels.bind(this))
-			}
-		}).bind(this))
-	);
-	
-	loadBranchMerge.finally((function() {
+	onSetup.then(onGndLoad.then((function() {
+		console.warn("Setting up world!");
 		
+		this.setupWorld();
+	}).bind(this)));
+	
+	var t1;
+	
+	onSetup.then(onGndLoad.then((function() {
+	
+		var t = new Deferred();
+	
+		onRsmLoad
+			.then(function() {
+				console.warn("Setting up textures and models!");
+				t1 = Date.now();
+			})
+			.then(this.setupModelTextures.bind(this))
+			.then(function() {
+				console.warn("Loading model texture took " + (Date.now() - t1) + "ms");
+			})
+			.then(this.setupModels.bind(this))
+			.then(function() {
+				console.warn("Done setting up textures and models!");
+				t.success();
+			});
+	
+		return t;
+	
+	}).bind(this)));
+	
+	onSetup.then(onGatLoad);
+	
+	onSetup.finally((function() {
+		
+		console.warn("Setup is done!");
+		
+		var t0 = Date.now();
 		// Render once to finalize scene in THREE.js
 		this.renderer.render(this.scene, this.camera);
+		
+		console.warn("Initial render took " + (Date.now() - t0) + "ms");
 		
 		// Clear any loading data here
 		this.derefTempObjects();
 		
-		loadPromise.success();
+		onDone.success();
 	}).bind(this));
 	
-	return loadPromise;
+	return onDone;
 	
 };
 

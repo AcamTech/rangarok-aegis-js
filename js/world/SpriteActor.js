@@ -23,8 +23,15 @@ var SpriteActor = function(mapInstance, name) {
 	
 	this._isMoving = false;
 	this._cancelMove = false;
-		
+	
+	this.movementPath = null;
+	this.movementPathSpeedFactor = 1.0;
+	
 	this.movementSpeed = 150;
+	
+	this.attackDelay = 300;
+	this.damageDelay = 300;
+	
 	this.lastUpdate = -1;
 	this.movementTime = 0;
 	this.moveStartTime = 0;
@@ -84,9 +91,11 @@ SpriteActor.Types = {
 SpriteActor.BaseActionIndices = {
 	STAND: 0,
 	WALK: 1,
+	IDLE: 0,
 	ATTACK: 2,
 	HURT1: 3,
-	DIE: 4
+	HURT2: 3,
+	DIE: 4,
 };
 
 SpriteActor.PlayerActionIndices = {
@@ -94,15 +103,15 @@ SpriteActor.PlayerActionIndices = {
 	WALK: 1,
 	SIT: 2,
 	PICK: 3,
-	ACTION1: 4,
-	ATTACK1: 5,
+	IDLE: 4, // 
+	ATTACK: 5,
 	HURT1: 6,
 	HURT2: 7,
 	DIE: 8,
 	ACTION2: 9,
-	ATTACK2: 10,
-	ATTACK3: 11,
-	ACTION3: 12
+	ATTACK2: 10, // CRUSADER=MACE, TWOHAND_MACE, TWOHAND_SWORD, SHORTSWORD, SWORD
+	ATTACK3: 11, // CRUSADER=SPEAR, TWOHAND_SPEAR (broken)
+	ACTION3: 12 // NONE (hit)?
 };
 
 SpriteActor.Direction = {
@@ -122,7 +131,10 @@ SpriteActor.Attachment = {
 	HEAD: 2,
 	TOP: 3,
 	MID: 4,
-	BOTTOM: 5
+	BOTTOM: 5,
+	WEAPON: 6,
+	WEAPON_EFFECT: 7,
+	SHIELD: 8
 };
 
 SpriteActor.AttachmentPriority = {
@@ -132,6 +144,9 @@ SpriteActor.AttachmentPriority = {
 	3: 400, // TOP
 	4: 300, // MID
 	5: 200, // BOTTOM
+	6: 700, // WEAPON
+	7: 600, // WEAPON_EFFECT
+	8: 500, // SHIELD
 };
 
 SpriteActor.prototype.Die = function() {
@@ -158,9 +173,32 @@ SpriteActor.prototype.__defineGetter__('Action', function() {
 	return this.action;
 });
 
+SpriteActor.prototype.ResetMotionTime = function() {
+
+	for(var i in this.attachments) {
+		this.attachments[i].timeElapsed = 0;
+		this.attachments[i].frameId = 0;
+	}
+	
+};
+
 SpriteActor.prototype.__defineSetter__('Action', function(value) {
-	this.action = value;
+	
+	if(this.action != value) {
+		this.ResetMotionTime();
+		this.action = value;
+	}
+	
 });
+
+// Face in the direction of target actor
+SpriteActor.prototype.SetDirectionTargetActor = function(targetActor) {
+	
+	this.Direction = this.getDirectionFromCellChange(
+		this.gatPosition,
+		targetActor.gatPosition
+	);
+};
 
 SpriteActor.prototype.__defineSetter__('Direction', function(value) {
 	this.standingDirection = value % 8;
@@ -175,6 +213,13 @@ SpriteActor.prototype.__defineGetter__('motion', function() {
 	return this.action * 8 + this.motionDirection;
 });
 
+SpriteActor.prototype.__defineSetter__("AttackMotionSpeed", function(value) {
+	this.attackDelay = value;
+});
+
+SpriteActor.prototype.__defineSetter__("DamageMotionSpeed", function(value) {
+	this.damageDelay = value;
+});
 
 SpriteActor.prototype.__defineSetter__("MovementSpeed", function(value) {
 	this.movementSpeed = value;
@@ -194,6 +239,7 @@ SpriteActor.prototype.__defineSetter__("isMoving", function(value) {
 });
 
 SpriteActor.prototype.__defineSetter__("gatPosition", function(value) {
+
 	this.mapInstance.updateEntityGatPosition(this, value.x, value.y, this._gatPosition.x, this._gatPosition.y);
 	this._gatPosition = value;
 	
@@ -216,6 +262,7 @@ SpriteActor.prototype.SetGatPosition = function(x, y) {
 	if(this.isMoving) {
 		// 
 		this.isMoving = false;
+		this._requestedNewPath = null;
 	}
 	
 	var fx = Math.floor(x);
@@ -232,7 +279,7 @@ SpriteActor.prototype.AbruptStop = function() {
 	this.CancelMove();
 	this.isMoving = false;
 
-}
+};
 
 SpriteActor.prototype.CancelMove = function() {
 	if(this.isMoving) {
@@ -242,36 +289,113 @@ SpriteActor.prototype.CancelMove = function() {
 	return false;
 };
 
-SpriteActor.prototype.MoveToGatPosition = function(x, y, moveStartTime) {
+SpriteActor.prototype.MoveToGatPosition = function(x0, y0, x1, y1, moveStartTime) {
 	
 	moveStartTime = moveStartTime || Date.now();
 	
 	if(this.isMoving && !this._cancelMove) {
 		this._cancelMove = true;
-		this._requestedNewPosition = new THREE.Vector2(x, y);
+		this._requestedNewPath = [x0, y0, x1, y1, moveStartTime];
 		return true;
 	}
+	
+	var path, displayPath;
+	var costPath, costDisplayPath;
+	
+	var dirty = this.gatPosition.x != x0 || this.gatPosition.y != y0;
+	
+	if(dirty) {
 		
-	var path = this.findPath(
-		this.gatPosition.x, 
-		this.gatPosition.y, 
-		x, 
-		y
+		path = this.findPath(x0, y0, x1, y1);
+		
+		if(path == null) {
+			console.warn("SpriteActor: Unable to move player");
+			return false;
+		}
+		
+		costPath = this.getPathMovementCost(path);
+		
+	}
+	
+	if(dirty && (this.gatPosition.x <= 0 && this.gatPosition.y <= 0)) {
+
+		this.SetGatPosition(x0, y0);
+
+	}
+	
+	displayPath = this.findPath(
+		this.gatPosition.x, this.gatPosition.y, 
+		x1, y1
 	);
 	
+	if(displayPath == null) {
+		
+		// In case we for some reason can't move to target tile from 
+		// current display position
+	
+		console.warn("SpriteActor: Can't move from current position ", this.gatPosition.x, this.gatPosition.y,"to ", x1, y1);
+				
+		this.SetGatPosition(x0, y0);
+		return this.MoveToGatPosition(x0, y0, x1, y1, moveStartTime);
+	}
+	
+	costDisplayPath = this.getPathMovementCost(displayPath);
+	
+	if(Math.abs(costDisplayPath - costPath) > 10 * SpriteActor.MOVE_COST) {
+		
+		// If the disparity is too great just teleport to the correct 
+		// position before moving
+		
+		console.warn("SpriteActor: Hard lag?");
+		
+		this.SetGatPosition(x0, y0);
+		return this.MoveToGatPosition(x0, y0, x1, y1, moveStartTime);
+		
+	}
+	
+	if(costDisplayPath <= 0)
+		// On the rare case when we are lagged onto the right position
+		return true;
+	
+	if(!dirty) {
+	
+		path = displayPath;
+		costPath = costDisplayPath;
+	
+	}
+	
+	var timeElapsed = Math.max(Date.now() - moveStartTime, 0);
+	var tilesElapsed = Math.min(timeElapsed / this.movementSpeed, costPath - 1);
+	var speedFactor = (costPath - tilesElapsed) / costDisplayPath;
+
+	return this.MovePath(displayPath, speedFactor);
+
+};
+
+SpriteActor.prototype.MovePath = function(path, speedFactor) {
+	
+	speedFactor = speedFactor || 1.0;
+	
 	if(path && path.length > 1) {
+		
 		if(!this.isMoving) {
 			
 			// Find how much time has elapsed from the move start
 			
-			this.movementTime = Math.max(Date.now() - moveStartTime, 0);
-			
-			this.isMoving = true;
+			this.movementTime = 0;
 		}
-		// Remove 
+		
+		this.isMoving = true;
+		
+		// Remove current tile from destination tiles
+		
 		path.splice(0, 1);
+		
 		this.movementPath = path;
+		this.movementPathSpeedFactor = speedFactor;
+		
 		this.Direction = this.getDirectionFromCellChange(this.gatPosition, this.movementPath[0]);
+		
 		return true;
 	}
 	
@@ -314,9 +438,8 @@ SpriteActor.prototype.gatToMapPosition = function( position ) {
 	
 	var v = this.mapInstance.mapCoordinateToPosition( position.x + 0.5, position.y + 0.5 );
 	
-	//v.y = -this.mapInstance.gatFileObject.getBlockAvgDepth(this.gatPosition.x, this.gatPosition.y) + 0.5; // currentGatPosition
+	// Get height in the middle of the GAT cell and align a little above ground
 	
-	// Get height in the middle of the GAT cell
 	v.y = -this.mapInstance.subGatPositionToMapHeight( position.x, position.y, 0.5, 0.5 ) + 0.5;
 	
 	return v;
@@ -373,29 +496,6 @@ SpriteActor.prototype.mixNodePositionsToMapCoordinate = function(srcPosition, ds
 	
 };
 
-/**
- * Get the time cost factor of moving between two neighboring GAT nodes.
- *
- * @param {THREE.Vector2} src - Source GAT tile 
- * @param {THREE.Vector2} dst - Destination GAT tile
- * @returns {Number} - Movement cost factor
- *
- */
-SpriteActor.prototype.GetTileMovementCostFactor = function(src, dst) {
-
-	var dx = Math.abs(dst.x - src.x);
-	var dy = Math.abs(dst.y - src.y);
-	
-	var delta = dx + dy;
-	
-	if(delta > 2) {
-		console.warn("SpriteActor: Movement cost should be calculated between neighboring tiles");
-	}
-	
-	return delta >= 2 ? 1.4 : 1.0;
-
-};
-
 SpriteActor.prototype.UpdatePosition = function() {
 	
 	if(this.isMoving) {
@@ -411,8 +511,10 @@ SpriteActor.prototype.UpdatePosition = function() {
 			
 			var nNode = this.movementPath[0];
 			
-			var movementCost = this.movementSpeed * this.GetTileMovementCostFactor(this.gatPosition, nNode);
+			var tileMoveCostFactor = this.getTileMovementCost(this.gatPosition, nNode) / SpriteActor.MOVE_COST;
 			
+			var movementCost = this.movementSpeed * tileMoveCostFactor * this.movementPathSpeedFactor;
+						
 			while(this.movementTime >= movementCost) {
 				
 				if(this.movementPath.length < 1) {
@@ -427,16 +529,19 @@ SpriteActor.prototype.UpdatePosition = function() {
 				if(this._cancelMove) {
 					// If movement stop requested, do so now that we've 
 					// reached a new tile...
-					if(this._requestedNewPosition) {
-						this.MoveToGatPosition(
-							this._requestedNewPosition.x,
-							this._requestedNewPosition.y
-						);
+					
+					var pathData = this._requestedNewPath;
+					
+					if(pathData) {
+						
+						this.MoveToGatPosition.apply(this, this._requestedNewPath);
+						
 					} else {
 						this.movementPath = [];
 					}
+					
+					this._requestedNewPath = null;
 					this._cancelMove = false;
-					this._requestedNewPosition = null;
 				}
 				
 				nNode = this.movementPath[0] || this.gatPosition;
@@ -447,7 +552,9 @@ SpriteActor.prototype.UpdatePosition = function() {
 				}
 				
 				// Update cost of movement
-				movementCost = this.movementSpeed * this.GetTileMovementCostFactor(this.gatPosition, nNode);
+				
+				tileMoveCostFactor = this.getTileMovementCost(this.gatPosition, nNode) / SpriteActor.MOVE_COST;
+				movementCost = this.movementSpeed * tileMoveCostFactor * this.movementPathSpeedFactor;
 				
 			}
 			
@@ -463,24 +570,71 @@ SpriteActor.prototype.UpdatePosition = function() {
 	
 };
 
+SpriteActor.MOVE_COST = 10;
+SpriteActor.MOVE_DIAGONAL_COST = 14;
+
+
+/**
+ * Get the time cost factor of moving between two neighboring GAT nodes.
+ *
+ * @param {THREE.Vector2} src - Source GAT tile 
+ * @param {THREE.Vector2} dst - Destination GAT tile
+ * @returns {Number} - Movement cost factor
+ *
+ */
+SpriteActor.prototype.getTileMovementCost = function(src, dst) {
+
+	var dx = Math.abs(dst.x - src.x);
+	var dy = Math.abs(dst.y - src.y);
+	
+	var delta = dx + dy;
+	
+	if(delta > 2) {
+		console.warn("SpriteActor: Movement cost should be calculated between neighboring tiles");
+	}
+	
+	return delta >= 2 ? SpriteActor.MOVE_DIAGONAL_COST : SpriteActor.MOVE_COST;
+
+};
+
+SpriteActor.prototype.getPathMovementCost = function(path) {
+	
+	if(!(path instanceof Array))
+		return -1;
+	
+	if(path.length == 1)
+		return 0;
+	
+	var cost = 0;
+	
+	for(var i = 1; i < path.length; i++) {
+		cost += this.getTileMovementCost(path[i-1], path[i]);
+	};
+	
+	return cost;
+
+};
+
 // A* path search
 SpriteActor.prototype.findPath = function(x0, y0, x1, y1) {
 
-	var MOVE_COST = 10;
-	var MOVE_DIAGONAL_COST = 14;
+	var MOVE_COST = SpriteActor.MOVE_COST;
+	var MOVE_DIAGONAL_COST = SpriteActor.MOVE_DIAGONAL_COST;
 
 	var gat = this.mapInstance.gatFileObject;
 	
-	// First check if destination is reachable
+	// Ensure destination is reachable
 	if(!gat.hasProperty(x1, y1, GAT.BlockProperties.WALKABLE))
 		return false;
 	
 	var h = function(node) {
-		return MOVE_COST * ( Math.abs(x1 - node[0]) + Math.abs(y1 - node[1]) );
-		//var x2 = x1 - node[0];
-		//var y2 = y1 - node[1];
-		//return Math.sqrt( x2 * x2 + y2 * y2 );
-	}
+	
+		var dx = Math.abs(x1 - node[0]);
+		var dy = Math.abs(y1 - node[1]);
+		
+		return 0.5 * MOVE_DIAGONAL_COST * (dx + dy);
+		
+	};
 	
 	var getNeighborNodes = function(x, y) {
 		
@@ -530,9 +684,7 @@ SpriteActor.prototype.findPath = function(x0, y0, x1, y1) {
 	var q = 0;
 	var current;
 	
-	while(openSet.length && q < 200) {
-		
-		q++;
+	while(openSet.length && q++ < 200) {
 		
 		var index = 0;
 		
@@ -554,59 +706,43 @@ SpriteActor.prototype.findPath = function(x0, y0, x1, y1) {
 			var node = current;
 			
 			do {
+				
 				nodeList.push(new THREE.Vector2(node[0], node[1]));
+				
 			} while(node = cameFrom[nodeId(node)]);
 			
 			return nodeList.reverse();
 		}
 		
 		// Remove current from open set
+		
 		openSet.splice(index, 1);
-		// Add current to closed set
 		_openSet[cId] = false;
+		
+		// Add current to closed set
+		
 		closedSet[cId] = true;
 		
 		var neighbors = getNeighborNodes(current[0], current[1]);
 		
-			//console.log('Current', current);
-			
 		for(var i = 0; i < neighbors.length; i++) {
 			
 			var node = neighbors[i];
 			var nId = nodeId(node);
-			
-			var dist, dx0, dy0, dx1, dy1, ddir;
-			
-			dx0 = current[0] - node[0];
-			dy0 = current[1] - node[1];
-			
-			dist = Math.abs(dx0) + Math.abs(dy0);
-			
-			// Diagonal movement costs is 1.4
+			var dx = current[0] - node[0];
+			var dy = current[1] - node[1];
+			var dist = Math.abs(dx) + Math.abs(dy);
 			var gcost = dist > 1 ? MOVE_DIAGONAL_COST : MOVE_COST;
-			
-			//if(!cameFrom[cId]) {
-			//	ddir = 1.0;
-			//} else {
-				 //Turning penalty
-			//	dx1 = cameFrom[cId][0] - current[0];
-			//	dy1 = cameFrom[cId][1] - current[1];
-			//	ddir = ( (dy0 != dy1) || (dx0 != dx1) ) ? 0.0001 : 0;
-			//}
-			
 			var gScore_t = gScore[cId] + gcost;
+			var fScore_t = gScore_t + h(node);
 			
-			//console.log('Child', node);
-			
-			if(closedSet[nId] && gScore_t >= gScore[nId]) {
-				//console.log('Dropping...');
+			if(closedSet[nId] || fScore_t >= (fScore[nId] || Infinity))
 				continue;
-			}
 			
-			if(openSet[nId] !== true || gScore_t < gScore[nId]) {
+			if(openSet[nId] !== true || fScore_t < fScore[nId]) {
 				cameFrom[nId] = current;
 				gScore[nId] = gScore_t;
-				fScore[nId] = gScore_t + h(node);
+				fScore[nId] = fScore_t;
 				// Add to openset
 				if(_openSet[nId] !== true) {
 					_openSet[nId] = true;
@@ -617,8 +753,8 @@ SpriteActor.prototype.findPath = function(x0, y0, x1, y1) {
 		
 	}
 	
-	//console.error("Pathfinding failed in 100 iterations", current, x0, y0, x1, y1);
-	// Failed!
+	console.warn("SpriteActor: Pathfinding failed.");
+	
 	return null;
 	
 };
@@ -783,6 +919,10 @@ SpriteActor.prototype.UpdateAttachment = function(deltaTime, attachmentType, mot
 		motion = this.motion;
 	}
 	
+	if(actFileObject.actions.length <= motion) {
+		console.warn("Attacment " + attachmentType + " doesn't have motion " + motion);
+	}
+	
 	var nMotionFrames = actFileObject.actions[motion].length;
 	
 	// Ensure motion frame ID isn't out of bounds
@@ -874,11 +1014,28 @@ SpriteActor.prototype.UpdateAttachment = function(deltaTime, attachmentType, mot
 	// if attacking, use aMotion
 	// if walking, use aMotion or speed?
 	
-	if(this.action == this.ActionSet.WALK) {
-		//delay = 2 * this.movementSpeed / actFileObject.delays[motion];
-		delay = 2 * 10 * actFileObject.delays[motion] * (this.movementSpeed / 150);
+	var baseDelay = 25 * actFileObject.delays[motion];
+	
+	if(this.Action == this.ActionSet.WALK) {
+	
+		delay = baseDelay * (this.movementSpeed / 150);
+	
+	} else if(this.Action == this.ActionSet.ATTACK) {
+	
+		//delay = 2 * 10 * actFileObject.delays[motion] * (this.attackDelay / 150);
+		//delay = this.attackDelay;
+		delay = this.attackDelay / nMotionFrames;
+	
+	} else if(this.Action == this.ActionSet.HURT1) {
+	
+		//delay = 2 * 10 * actFileObject.delays[motion] * (this.damageDelay / 150);
+		delay = this.damageDelay / nMotionFrames;
+		//delay = baseDelay * (this.damageDelay / 150);
+		
 	} else {
-		delay = actFileObject.delays[motion] * 25;
+	
+		delay = baseDelay;
+	
 	}
 	
 	delay = Math.max(1, delay);
@@ -890,7 +1047,11 @@ SpriteActor.prototype.UpdateAttachment = function(deltaTime, attachmentType, mot
 		
 		if(nextFrameId >= numFrames) {
 			
-			if(this.AnimationRepeat) {
+			if(this.Action == this.ActionSet.ATTACK || this.Action == this.ActionSet.HURT1) {
+			
+				this.Action = this.ActionSet.IDLE;
+			
+			} else if(this.AnimationRepeat) {
 				attachment.frameId = nextFrameId % numFrames;
 			}
 			
@@ -917,6 +1078,13 @@ SpriteActor.prototype.hasAttachment = function(attachmentType) {
 // Check if the face of the character is hidden
 SpriteActor.prototype.__defineGetter__("faceObscured", function() {
 	return this.motionDirection >= 3 && this.motionDirection <= 5;
+});
+
+SpriteActor.prototype.__defineGetter__("displayWeapon", function() {
+	return this.Action == this.ActionSet.ATTACK
+	 || this.Action == this.ActionSet.ATTACK2
+	 || this.Action == this.ActionSet.ATTACK3
+	 || this.Action == this.ActionSet.ACTION;
 });
 
 SpriteActor.prototype.Update = function(camera) {
@@ -1003,8 +1171,9 @@ SpriteActor.prototype.Update = function(camera) {
 	}
 	
 	// Head & headgear attachments
+	// Weapon attachment
 	
-	var attachments = [SpriteActor.Attachment.HEAD, SpriteActor.Attachment.TOP, SpriteActor.Attachment.MID, SpriteActor.Attachment.BOTTOM];
+	var attachments = [SpriteActor.Attachment.HEAD, SpriteActor.Attachment.TOP, SpriteActor.Attachment.MID, SpriteActor.Attachment.BOTTOM, SpriteActor.Attachment.WEAPON, SpriteActor.Attachment.WEAPON_EFFECT];
 	
 	var bodyAttachmentOffset = attachmentPointers[0];
 	
@@ -1021,18 +1190,37 @@ SpriteActor.prototype.Update = function(camera) {
 				continue;
 			}
 			
+			var frameId;
+			
+			if(attachment == SpriteActor.Attachment.HEAD) {
+				frameId = this.lookingDirection;
+			} else {
+				frameId = attachmentFrameId;
+			}
+			
 			var currentAttachmentOffset = this
 				.getAttachment(attachment)
 				.actFileObject
-				.actions[this.motion][this.lookingDirection]
+				.actions[this.motion][frameId]
 				.attachmentPointers[0];
+			
+			var imfX = bodyAttachmentOffset.x;
+			var imfY = bodyAttachmentOffset.y;
+			
+			if(currentAttachmentOffset) {
+				imfX += -currentAttachmentOffset.x;
+				imfY += -currentAttachmentOffset.y;
+			} else {
+				imfX = 0;
+				imfY = 0;
+			}
 			
 			this.UpdateAttachment(
 				dt,
 				attachment, 
-				this.lookingDirection,
-				bodyAttachmentOffset.x - currentAttachmentOffset.x, 
-				bodyAttachmentOffset.y - currentAttachmentOffset.y
+				frameId,
+				imfX, 
+				imfY
 			);
 		}
 	};
@@ -1212,7 +1400,7 @@ SpriteActor.prototype.showNameLabel = function() {
 
 SpriteActor.prototype.hideNameLabel = function() {
 
-	if(!this._nameLabelGenerated)
+	if(!this._nameLabelGenerated || !this.nameLabelSprite)
 		return;
 
 	this.nameLabelSprite.visible = false;

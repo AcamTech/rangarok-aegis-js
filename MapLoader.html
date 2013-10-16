@@ -5,7 +5,7 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0 maximum-scale=1, user-scalable=no" />
 		
 	<script src="settings.js"></script>
-	
+		
 	<!-- File formats -->
 	<script src="js/fileformat/rsm.js"></script>
 	<script src="js/fileformat/gat.js"></script>
@@ -25,6 +25,7 @@
 	<script src="js/common/ResourceLoader.js"></script>
 
 	<!-- Tables -->
+	<script src="js/table/weapontable.js"></script>
 	<script src="js/table/VarEnum.js"></script>
 	<script src="js/table/mp3nametable.js"></script>
 	<script src="js/table/IndoorRswTable.js"></script>
@@ -127,6 +128,18 @@ var webGlTest = function() {
 }
 
 window.onload = function() {
+
+	//var t = new LoaderThread();
+	
+	//ResourceLoader.getBinaryFileData(ResourceLoader.FileType.RSW, "prontera.rsw").then(function(buffer) {
+	
+	//	console.log(buffer);
+	//	t.passBuffer(buffer);
+		
+	//});
+	
+
+	//return;
 
 	var e0 = window.navigator.userAgent.match("((Chrom(e|(ium)))|(Firefox))/2[0-9]") == null;
 	var e1 = !webGlTest();
@@ -402,7 +415,7 @@ var start = function() {
 			mapLoader.start();
 			
 			mapLoader.attachEventListener("OnPCRequestMove", function(pos) {
-				obj.MoveToGatPosition(pos.x, pos.y, Date.now());
+				obj.MoveToGatPosition(obj.gatPosition.x, obj.gatPosition.y, pos.x, pos.y, Date.now());
 			});
 			
 			// Remove background from GUI
@@ -448,6 +461,7 @@ var start = function() {
 		.then(lol.bind(this, obj, "sprite/ÀÎ°£Á·/¸öÅë/³²/" + ClassResNameTable[14] + "_³²", SpriteActor.Attachment.BODY))
 		.then(lol.bind(this, obj, "sprite/ÀÎ°£Á·/¸Ó¸®Åë/³²/" + HeadIdTable[1][ parseInt(Math.random() * HeadIdTable[1].length ) ] + "_³²", SpriteActor.Attachment.HEAD))
 		.then(lol.bind(this, obj, "sprite/shadow", SpriteActor.Attachment.SHADOW))
+		.then(lol.bind(this, obj, PathHelper.getWeaponResPath(Weapon_IDs.WEAPONTYPE_TWOHANDSPEAR, 14, 1), SpriteActor.Attachment.WEAPON)) // WEAPON, JOB=14, SEX=1
 		//.then(lol.bind(this, obj, "sprite/¾Ç¼¼»ç¸®/³²/³²_Åä³¢¸Ó¸®¶ì", SpriteActor.Attachment.TOP))
 		.then(function() {
 			
@@ -466,6 +480,13 @@ var start = function() {
 		
 		});
 };
+
+function weapon(wtype) {
+
+	lol(s, PathHelper.getWeaponResPath(wtype, 14, 1), SpriteActor.Attachment.WEAPON);
+	lol(s, PathHelper.getWeaponEffectResPath(wtype, 14, 1), SpriteActor.Attachment.WEAPON_EFFECT);
+	
+}
 
 //function makePC = function() {
 	
@@ -655,8 +676,13 @@ function lol(obj, n, ttype) {
 	
 	// Set attachment
 	return queue.finally(function() {
-		obj.SetAttachment(ttype, sprFileObject, actFileObject);
-		obj.addAttachmentToScene(mapLoader.scene, ttype);
+		
+		if(actFileObject != null && sprFileObject != null) {
+			obj.SetAttachment(ttype, sprFileObject, actFileObject);
+			obj.addAttachmentToScene(mapLoader.scene, ttype);	
+		} else {
+			// Things didn't work out!
+		}
 	})
 	
 }

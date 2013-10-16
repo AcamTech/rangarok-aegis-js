@@ -4,12 +4,8 @@ function GAT( buffer ) {
 	
 	this.header = {};
 	this.blocks = [];
-	
-	this.init = function( buffer ) {
-		this.buffer = buffer;
-		this.parseFormat();
-		this.buffer = null;
-	}
+	this.baseOffset = null;
+	this.float32Data = null;
 	
 	this.__defineGetter__( 'width', function() {
 		return this.header.width;
@@ -19,8 +15,32 @@ function GAT( buffer ) {
 		return this.header.height;
 	});
 	
+	this.offsetToBlock = function(x, y) {
+		return (this.header.width * y + x) * GAT.SIZEOF_STRUCT_BLOCK;
+	}
+	
+	this.isValidBlock = function(x, y) {
+		
+		var idx = this.offsetToBlock(x, y) / 4;
+		return idx < this.float32Data.length;
+	};
+	
 	this.getBlock = function( x, y ) {
-		return this.blocks[ x + y * this.width ];
+		
+		if(!this.isValidBlock(x, y))
+			return undefined;
+		
+		var idx = this.offsetToBlock(x, y) / 4;
+		
+		return {
+			upperLeftHeight: this.float32Data[idx+0],
+			upperRightHeight: this.float32Data[idx+1],
+			lowerLeftHeight: this.float32Data[idx+2],
+			lowerRightHeight: this.float32Data[idx+3],
+			// type seems to be uint8, the remaining 3 bytes being padding
+			type: this.uint8Data[4*(idx+4)],
+		};
+		
 	}
 	
 	// block is considered underwater if avgDepth > waterLevel
@@ -46,12 +66,12 @@ function GAT( buffer ) {
 		return (GAT.BlockTypes[block.type] & property) != 0;
 	};
 	
-	this.parseFormat = function() {
+	this.parseFormat = function(buffer) {
 		
-		var data = new DataView( this.buffer, 0 );
+		var data = new DataView( buffer, 0 );
 		var offset = 0;
 		
-		this.header = {
+		var header = {
 			magic: data.getString( offset, 4 ),
 			version: data.getUint16( offset + 4, true ),
 			width: data.getUint32( offset + 6, true ),
@@ -60,30 +80,28 @@ function GAT( buffer ) {
 		
 		offset += 14;
 		
-		if(this.header.magic.localeCompare('GRAT') !== 0) {
+		if(header.magic.localeCompare('GRAT') !== 0) {
 			throw 'GAT :: uknown identifier ' + this.header.magic;
 		}
 		
-		if( this.header.version !== 0x201 )
+		if(header.version !== 0x201)
 			console.log('GAT :: Info: File format version 0x' + this.header.version.toString(16) );
 		
-		for( var i = 0; i < this.header.width * this.header.height; i++, offset += 20 ) {
-			this.blocks.push({
-				upperLeftHeight: data.getFloat32( offset, true ),
-				upperRightHeight: data.getFloat32( offset + 4, true ),
-				lowerLeftHeight: data.getFloat32( offset + 8, true ),
-				lowerRightHeight: data.getFloat32( offset + 12, true ),
-				type: data.getUint8( offset + 16 )
-				// skip uknown, 3 bytes (or is type integer?)
-			});
-		}
+		var datBuffer = buffer.slice(offset);
+		
+		this.float32Data = new Float32Array(datBuffer);
+		this.uint8Data = new Uint8Array(datBuffer);
+		
+		this.header = header;
 		
 	}
 	
-	this.init( buffer );
+	this.parseFormat( buffer );
 	console.log('Parsed GAT file format in ' + ((new Date).getTime() - start) + ' ms');
 	
 };
+
+GAT.SIZEOF_STRUCT_BLOCK = 20;
 
 GAT.BlockProperties = {
 	NONE: 0,

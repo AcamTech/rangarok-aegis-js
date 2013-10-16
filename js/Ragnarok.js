@@ -23,6 +23,9 @@ var Ragnarok = function( document ) {
 	
 	});
 	
+	// Purge old files every three minutes (minimum age 6 minutes)
+	//MemoryHelper.setPurgeInterval(360, 180 * 1000);
+	
 	window.ragnarok = this;
 	
 };
@@ -295,9 +298,28 @@ Ragnarok.prototype.setupSessionHandlers = function() {
 		
 	}).bind(this));
 	
+	this.session.attachEventListener("OnActorAttacked", (function(attackData) {
+		
+		
+		console.warn("Actor " + attackData.GID + " attacks " + attackData.targetGID, attackData);
+		
+		this.graphics.scene.ActorAttack(
+			attackData.GID,
+			attackData.targetGID,
+			attackData.attackMT,
+			attackData.attackedMT
+		);
+		
+	}).bind(this));
+
+	
 	this.session.attachEventListener("OnActorMovement", (function(session_actor) {
 		
-		//console.warn("Actor moved");
+		
+		//console.warn("Actor moved", session_actor.x,
+		//	session_actor.y,
+		//	session_actor.x1,
+		//	session_actor.y1);
 		
 		this.graphics.scene.MoveEntityPosition(
 			session_actor.GID,
@@ -387,6 +409,11 @@ Ragnarok.prototype.loadSceneAfter = function() {
 	if(Settings.music && rswName in mp3NameTable) {
 		SoundPlayer.playBgm(mp3NameTable[rswName]);
 	}
+	
+	// Dereference objects
+	
+	MemoryHelper.dereferenceProcessedObjects();
+	MemoryHelper.dereferenceCachedObjects();
 			
 	// Start rendering
 	this.graphics.scene.Start();

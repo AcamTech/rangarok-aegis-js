@@ -220,29 +220,12 @@ ResourceLoader.escapeRemotePath = function(fileName) {
 };
 
 ResourceLoader.files = new Map();
-ResourceLoader.processing = new Map();
 ResourceLoader.requests = new Map();
+ResourceLoader.cacheList = [];
 
 ResourceLoader.getLocalFile = function( fileName ) {
 
-	var filePromise = new Deferred();
-	
-	if(ResourceLoader.processing.has(fileName)) {
-		
-		var reqs = ResourceLoader.requests.get(fileName);
-		
-		reqs.push(filePromise);
-		
-		ResourceLoader.requests.set(fileName, reqs);
-		
-		return filePromise;
-		
-	} else {
-		
-		ResourceLoader.processing.set(fileName, true);
-		ResourceLoader.requests.set(fileName, [filePromise]);
-		
-	}
+	var item = new Deferred();
 	
 	var toArrayBuffer = function( buffer ) {
 	
@@ -269,23 +252,19 @@ ResourceLoader.getLocalFile = function( fileName ) {
 		
 		if(data !== undefined) {
 			
-			var reqs = ResourceLoader.requests.get(fileName);
-			
-			for(var i = 0; i < reqs.length; i++) {
-				reqs[i].success( toArrayBuffer(data) );
-			}
-			
-			ResourceLoader.requests.delete(fileName);
-			ResourceLoader.processing.delete(fileName);
+			item.success(toArrayBuffer(data));
 		
 		} else {
+			
 			console.error("ResourceLoader: Read file success but no data");
+			
+			item.success(null);
+			
 		}
-		
 		
 	});
 	
-	return filePromise;
+	return item;
 
 };
 
@@ -293,59 +272,92 @@ ResourceLoader.getRemoteFile = function(fileName) {
 		
 	var item = new Deferred();
 	
-	if(ResourceLoader.files.has(fileName)) {
-		
-		item.success(ResourceLoader.files.get(fileName));
-		
-	} else if(ResourceLoader.processing.has(fileName)) {
-		
-		var reqs = ResourceLoader.requests.get(fileName);
-		reqs.push(item);
-		ResourceLoader.requests.set(fileName, reqs);
-		
-	} else {
+	var xmlhttp = new XMLHttpRequest();
 	
-		ResourceLoader.processing.set(fileName, true);
-		ResourceLoader.requests.set(fileName, [item]);
+	xmlhttp.open('GET', ResourceLoader.baseUrl + ResourceLoader.escapeRemotePath(fileName), true);
+	xmlhttp.responseType = 'arraybuffer';
+	xmlhttp.onreadystatechange = function() {
 		
-		var xmlhttp = new XMLHttpRequest();
-		
-		xmlhttp.open('GET', ResourceLoader.baseUrl + ResourceLoader.escapeRemotePath(fileName), true);
-		xmlhttp.responseType = 'arraybuffer';
-		xmlhttp.onreadystatechange = function() {
+		if( this.readyState == 4 ) {
 			
-			if( this.readyState == 4 ) {
-				
-				ResourceLoader.files.set(fileName, this.response);
-				var reqs = ResourceLoader.requests.get(fileName);
-				
-				ResourceLoader.requests.set(fileName, []);				
-				
-				for(var i = 0; i < reqs.length; i++) {
-					reqs[i].success(this.response);
-				}
-				
-				
-			}
+			item.success(this.response);
+			
 		}
-		
-		xmlhttp.send(null);
-		
 	}
+	
+	xmlhttp.send(null);
 	
 	return item;
 	
 };
 
-ResourceLoader.requestFile = function( name ) {
+ResourceLoader.requestFile = function(name) {
 	
 	name = name.replace("\\", "/");
 	
+	var fn;
+	var task = new Deferred();
+	
 	if( ResourceLoader.useNativeFileSystem ) {
-		return ResourceLoader.getLocalFile( name );
+		fn = ResourceLoader.getLocalFile;
 	} else {
-		return ResourceLoader.getRemoteFile( name );
+		fn = ResourceLoader.getRemoteFile;
 	}
+	
+	if(ResourceLoader.files.has(name)) {
+		
+		// Update last access time
+			
+		for(var i = 0; i < ResourceLoader.cacheList.length; i++) {
+			if(ResourceLoader.cacheList[i].id == name) {
+				ResourceLoader.cacheList[i].time = Date.now();
+				break;
+			}
+		}
+		
+		// Fetch complete
+		
+		item.success(ResourceLoader.files.get(name));
+		
+	} else if(ResourceLoader.requests.has(name)) {
+	
+		var reqs = ResourceLoader.requests.get(name);
+		
+		if(reqs.length > 0) {
+		
+			reqs.push(task);
+		
+			return task;
+		
+		}
+	
+	}
+	
+	ResourceLoader.requests.set(name, [task]);
+	
+	fn(name).then(function(response) {
+		
+		// Add reference
+		
+		ResourceLoader.cacheList.push({ id: name, time: Date.now() });
+		
+		// Store
+		
+		ResourceLoader.files.set(name, response);
+		
+		// Resolve requests
+		
+		var reqs = ResourceLoader.requests.get(name);
+		
+		ResourceLoader.requests.set(name, []);
+		
+		for(var i = 0; i < reqs.length; i++) {
+			(reqs[i]).success(response);
+		}
+		
+	});
+	
+	return task;
 	
 };
 
@@ -394,6 +406,7 @@ ResourceLoader.getBinaryFileData = function(fileType, pathName) {
 
 ResourceLoader._processedFileRequests = new Map();
 ResourceLoader._processedFileObjects = new Map();
+ResourceLoader._processedFileList = [];
 
 ResourceLoader.getProcessedFileObject = function(fileType, pathName) {
 	
@@ -404,15 +417,36 @@ ResourceLoader.getProcessedFileObject = function(fileType, pathName) {
 	if(ResourceLoader._processedFileRequests.has(id)) {
 	
 		if(ResourceLoader._processedFileObjects.has(id)) {
-			task.success(
-				ResourceLoader._processedFileObjects.get(id)
-			);
-		} else {		
+		
+			// Update last access time
+			
+			for(var i = 0; i < ResourceLoader._processedFileList.length; i++) {
+				if(ResourceLoader._processedFileList[i].id == id) {
+					ResourceLoader._processedFileList[i].time = Date.now();
+					break;
+				}
+			}
+			
+			// Fetching object succeeded
+			
+			task.success(ResourceLoader._processedFileObjects.get(id));
+			
+			return task;
+			
+		} else {
+			
 			var req = ResourceLoader._processedFileRequests.get(id);
-			req.push(task);
+			
+			if(req.length > 0) {
+			
+				req.push(task);
+				
+				return task;
+			
+			}
+			
 		}
 		
-		return task;
 	}
 	
 	ResourceLoader._processedFileRequests.set(id, [task]);
@@ -426,7 +460,21 @@ ResourceLoader.getProcessedFileObject = function(fileType, pathName) {
 			ResourceLoader._processedFileRequests.set(id, []);
 			
 			var parser = ResourceLoader.FileFormatParser[fileType];
-			var pobj = new parser(data);
+			
+			
+			var pobj;
+			
+			try {
+				pobj = new parser(data);
+			} catch(e) {
+				console.warn("ResourceLoader: Error parsing file. (" + String(e) + ")");
+				pobj = null;
+			}
+			
+			ResourceLoader._processedFileList.push({
+				id: id, 
+				time: Date.now()
+			});
 			
 			ResourceLoader._processedFileObjects.set(id, pobj);
 						

@@ -96,9 +96,27 @@ var PacketEventHandlers = [
 		this.AID = struct.AID;
 	}],
 	
-	[["PACKET_ZC_PAR_CHANGE"], function( struct ) {
+	[["PACKET_ZC_PAR_CHANGE", "PACKET_ZC_LONGPAR_CHANGE"], function( struct ) {
 		
-		this.SetPCStatus(struct.varID, struct.count);
+		var varID = struct.varID;
+		var value;
+		
+		if(struct.count !== undefined) {	
+			value = struct.count;
+		} else {
+			value = struct.amount;
+		}
+		
+		this.SetPCStatus(varID, value);
+	}],
+	
+	[["PACKET_ZC_COUPLESTATUS"], function( struct ) {
+		
+		this.SetPCStatus(struct.statusType, struct.defaultStatus);
+		
+		// TODO find enum ID for plus status
+		//this.SetPCStatus(struct.statusType + (0x67 - 0xd), struct.plusStatus);
+		
 	}],
 	
 	[["PACKET_ZC_ACCEPT_ENTER", "PACKET_ZC_REFUSE_ENTER",  "PACKET_ZC_ACCEPT_ENTER2"],
@@ -233,6 +251,74 @@ var PacketEventHandlers = [
 			this.KillActor(struct.GID);
 		} else {
 			this.VanishActor(struct.GID);
+		}
+	
+	
+	}],
+	
+	[["PACKET_ZC_SPRITE_CHANGE2"], function(struct) {
+	
+		// 0 LOOK_BASE,
+		// 1 LOOK_HAIR,
+		// 2 LOOK_WEAPON,
+		// 3 LOOK_HEAD_BOTTOM,
+		// 4 LOOK_HEAD_TOP,
+		// 5 LOOK_HEAD_MID,
+		// 6 LOOK_HAIR_COLOR,
+		// 7 LOOK_CLOTHES_COLOR,
+		// 8 LOOK_SHIELD,
+		// 9 LOOK_SHOES,
+		// 10 LOOK_BODY,
+		// 11 LOOK_FLOOR,
+		// 12 LOOK_ROBE,
+		
+		// struct.GID
+		
+		if(struct.type == 2 || struct.type == 8) {
+		
+			if(struct.type < 0)
+				console.warn("fix int32 to uint16[2]");
+		
+			var weaponId = struct.value & 0xffff;
+			var shieldId = (struct.value >> 16) & 0xffff;
+			
+			
+		} else {
+			var viewId = struct.value;
+		}
+		
+		// TODO
+		
+		//this._fireEvent("OnLookChange");
+	
+	}],
+	
+	[["PACKET_ZC_NOTIFY_ACT2"], function( struct ) {
+	
+		///     0 = damage [ damage: total damage, div: amount of hits, damage2: assassin dual-wield damage ]
+		///     1 = pick up item
+		///     2 = sit down
+		///     3 = stand up
+		///     4 = damage (endure)
+		///     5 = (splash?)
+		///     6 = (skill?)
+		///     7 = (repeat damage?)
+		///     8 = multi-hit damage
+		///     9 = multi-hit damage (endure)
+		///     10 = critical hit
+		///     11 = lucky dodge
+		///     12 = (touch skill?)
+	
+		if(struct.action == 0 || struct.action == 11 || struct.action == 10) {
+			
+			this.AttackActor(
+				struct.GID, struct.targetGID, struct.attackMT, 
+				struct.attackedMT, struct.count, struct.damage,
+				struct.leftDamage, struct.startTime
+			);
+			
+		} else {
+			console.warn("Unimplemented action " + struct.action);
 		}
 	
 	

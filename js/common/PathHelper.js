@@ -9,6 +9,8 @@ var PathHelper = {
 	genderFemale: decodeURIComponent("%C2%BF%C2%A9"), //"¿©",
 	monsterPath: "¸ó½ºÅÍ",
 	npcPath: "npc",
+	weaponPath: "ÀÎ°£Á·",
+	weaponEffectSuffix: "_°Ë±¤",
 	
 	// Missing NPCs defaults to this
 	defaultBodyResName: "sprite/¸ó½ºÅÍ/dark_priest",
@@ -54,6 +56,24 @@ var PathHelper = {
 		return a.join("/");
 	},
 	
+	getWeaponResPath: function(weapon_type, job_id, sex) {
+	
+		var jobResName = ClassResNameTable[job_id];
+		var resName = jobResName + "_" + PathHelper.getGenderName(sex) + WeaponNameTable[weapon_type];
+	
+		return PathHelper.createPath(
+			PathHelper.spritePath,
+			PathHelper.weaponPath,
+			jobResName,
+			resName
+		);
+	
+	},
+	
+	getWeaponEffectResPath: function(weapon_type, job_id, sex) {
+		return PathHelper.getWeaponResPath(weapon_type, job_id, sex) + PathHelper.weaponEffectSuffix;
+	},
+		
 	getGenderName: function( sex ) {
 		return ( sex == 1 )
 			? PathHelper.genderMale
